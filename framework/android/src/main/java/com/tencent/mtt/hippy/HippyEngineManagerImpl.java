@@ -73,7 +73,6 @@ import com.tencent.mtt.hippy.utils.UIThreadUtils;
 import com.tencent.mtt.hippy.views.modal.HippyModalHostManager;
 import com.tencent.mtt.hippy.views.modal.HippyModalHostView;
 import com.tencent.renderer.FrameworkProxy;
-import com.tencent.renderer.NativeRenderContext;
 import com.tencent.renderer.component.image.ImageDecoderAdapter;
 import com.tencent.renderer.component.text.FontAdapter;
 import com.tencent.renderer.node.RenderNode;
@@ -235,8 +234,8 @@ public abstract class HippyEngineManagerImpl extends HippyEngineManager implemen
     }
 
     @Override
-    public void onFirstPaint() {
-        mEngineContext.getJsDriver().recordFirstPaintEndTime(System.currentTimeMillis());
+    public void onFirstPaint(int rootId) {
+        mEngineContext.getJsDriver().recordFirstPaintEndTime(System.currentTimeMillis(), rootId);
         mEngineContext.getMonitor().addPoint(TimeMonitor.MONITOR_GROUP_PAINT,
                 TimeMonitor.MONITOR_POINT_FIRST_CONTENTFUL_PAINT);
         mGlobalConfigs.getEngineMonitorAdapter().onFirstPaintCompleted(mEngineContext.getComponentName());
@@ -690,7 +689,6 @@ public abstract class HippyEngineManagerImpl extends HippyEngineManager implemen
     }
 
     private void onEngineInitialized(EngineInitStatus statusCode, Throwable error) {
-        mEngineContext.getJsDriver().recordNativeInitEndTime(mInitStartTime, System.currentTimeMillis());
         mGlobalConfigs.getEngineMonitorAdapter().onEngineInitialized(statusCode);
         for (EngineListener listener : mEventListeners) {
             listener.onInitialized(statusCode, error == null ? null : error.toString());
@@ -880,8 +878,8 @@ public abstract class HippyEngineManagerImpl extends HippyEngineManager implemen
             mJsDriver = new JsDriver();
             mBridgeManager = new HippyBridgeManagerImpl(this, mCoreBundleLoader,
                     getBridgeType(), enableV8Serialization, mDebugMode,
-                    mServerHost, mGroupId, mThirdPartyAdapter, v8InitParams, mJsDriver);
-            mDomManager = (domManager != null) ? domManager : new DomManager();
+                    mServerHost, mGroupId, mThirdPartyAdapter, v8InitParams, mJsDriver, mInitStartTime);
+            mDomManager = (domManager != null) ? domManager : new DomManager(mGroupId);
             mRenderer = createRenderer(RenderConnector.NATIVE_RENDERER);
             mDomManager.attachToRenderer(mRenderer);
             mRenderer.attachToDom(mDomManager);

@@ -101,6 +101,7 @@ bool DomNodeStyleDiffer::Calculate(const std::shared_ptr<hippy::dom::RootNode>& 
 }
 
 RootNode::RootNode(uint32_t id) : DomNode(id, 0, 0, "", "", nullptr, nullptr, {}) {
+  InitLayoutConsts();
   SetRenderInfo({id, 0, 0});
   animation_manager_ = std::make_shared<AnimationManager>();
   interceptors_.push_back(animation_manager_);
@@ -332,7 +333,7 @@ void RootNode::SyncWithRenderManager(const std::shared_ptr<RenderManager>& rende
   TDF_PERF_LOG("RootNode::DoAndFlushLayout Done");
   auto dom_manager = dom_manager_.lock();
   if (dom_manager) {
-    dom_manager->RecordDomEndTimePoint();
+    dom_manager->RecordDomEndTimePoint(this->GetId());
   }
   render_manager->EndBatch(GetWeakSelf());
   TDF_PERF_LOG("RootNode::SyncWithRenderManager End");

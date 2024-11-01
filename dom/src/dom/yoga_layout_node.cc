@@ -280,6 +280,10 @@ void YogaLayoutNode::SetLayoutStyles(
   Parser(style_update, style_delete);
 }
 
+void YogaLayoutNode::ResetLayoutCache() {
+  FOOTSTONE_DLOG(INFO) << "ResetLayoutCache not impl in yoga";
+}
+
 void YogaLayoutNode::SetWidth(float width) { YGNodeStyleSetWidth(yoga_node_, width); }
 
 void YogaLayoutNode::SetHeight(float height) { YGNodeStyleSetHeight(yoga_node_, height); }
@@ -762,6 +766,7 @@ void YogaLayoutNode::Deallocate() {
   YGConfigFree(yoga_config_);
 }
 
+void InitLayoutConsts() {}
 std::shared_ptr<LayoutNode> CreateLayoutNode() { return std::make_shared<YogaLayoutNode>(); }
 
 }  // namespace dom

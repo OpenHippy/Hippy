@@ -41,6 +41,8 @@
 #include "footstone/base_timer.h"
 #include "footstone/worker.h"
 
+#define HIPPY_EXPERIMENT_LAYER_OPTIMIZATION
+
 namespace hippy {
 inline namespace dom {
 
@@ -131,23 +133,27 @@ class DomManager : public std::enable_shared_from_this<DomManager> {
   static byte_string GetSnapShot(const std::shared_ptr<RootNode>& root_node);
   bool SetSnapShot(const std::shared_ptr<RootNode>& root_node, const byte_string& buffer);
 
-  void RecordDomStartTimePoint();
-  void RecordDomEndTimePoint();
-  inline auto GetDomStartTimePoint() { return dom_start_time_point_; }
-  inline auto GetDomEndTimePoint() { return dom_end_time_point_; }
+  void RecordDomStartTimePoint(uint32_t root_id);
+  void RecordDomEndTimePoint(uint32_t root_id);
+  inline auto GetDomStartTimePoint(uint32_t root_id) { return dom_start_time_point_[root_id]; }
+  inline auto GetDomEndTimePoint(uint32_t root_id) { return dom_end_time_point_[root_id]; }
 
  private:
   friend class DomNode;
 
   uint32_t id_;
+#ifdef HIPPY_EXPERIMENT_LAYER_OPTIMIZATION
   std::shared_ptr<LayerOptimizedRenderManager> optimized_render_manager_;
-  std::weak_ptr<RenderManager> render_manager_;
+  std::shared_ptr<RenderManager> render_manager_;
+#else
+  std::shared_ptr<RenderManager> render_manager_;
+#endif
   std::unordered_map<uint32_t, std::shared_ptr<BaseTimer>> timer_map_;
   std::shared_ptr<TaskRunner> task_runner_;
   std::shared_ptr<Worker> worker_;
 
-  footstone::TimePoint dom_start_time_point_;
-  footstone::TimePoint dom_end_time_point_;
+  std::unordered_map<uint32_t, footstone::TimePoint> dom_start_time_point_;
+  std::unordered_map<uint32_t, footstone::TimePoint> dom_end_time_point_;
 };
 
 }  // namespace dom

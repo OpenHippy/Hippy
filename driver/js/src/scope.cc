@@ -47,6 +47,7 @@
 #include "driver/modules/scene_builder_module.h"
 #include "driver/modules/timer_module.h"
 #include "driver/modules/ui_manager_module.h"
+#include "driver/modules/ui_layout_module.h"
 #include "driver/vm/native_source_code.h"
 #include "footstone/logging.h"
 #include "footstone/string_view_utils.h"
@@ -125,6 +126,7 @@ Scope::Scope(std::weak_ptr<Engine> engine,
     : engine_(std::move(engine)),
       context_(nullptr),
       name_(std::move(name)),
+      extra_function_map_(std::make_unique<RegisterMap>()),
       call_ui_function_callback_id_(0),
       performance_(std::make_shared<Performance>()) {}
 
@@ -203,6 +205,7 @@ void Scope::BindModule() {
 #ifdef JS_V8
   module_object_map_["MemoryModule"] = std::make_shared<MemoryModule>();
 #endif
+  module_object_map_["LayoutModule"] = std::make_shared<LayoutModule>();
 }
 
 void Scope::Bootstrap() {
@@ -527,7 +530,7 @@ void Scope::LoadInstance(const std::shared_ptr<HippyValue>& value) {
   auto cb = [WEAK_THIS, weak_context, value]() mutable {
 #endif
     DEFINE_AND_CHECK_SELF(Scope)
-    // perfromance start time
+    // perfromance - RunApplication start time (end at DomStart)
     auto entry = self->GetPerformance()->PerformanceNavigation(kPerfNavigationHippyInit);
     entry->SetHippyRunApplicationStart(footstone::TimePoint::SystemNow());
 
@@ -561,9 +564,6 @@ void Scope::LoadInstance(const std::shared_ptr<HippyValue>& value) {
         context->ThrowException("Application entry not found");
       }
     }
-
-    // perfromance end time
-    entry->SetHippyRunApplicationEnd(footstone::TimePoint::SystemNow());
   };
   auto runner = GetTaskRunner();
   if (footstone::Worker::IsTaskRunning() && runner == footstone::runner::TaskRunner::GetCurrentTaskRunner()) {
