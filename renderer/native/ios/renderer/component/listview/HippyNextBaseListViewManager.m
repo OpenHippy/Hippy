@@ -46,6 +46,12 @@ HIPPY_EXPORT_VIEW_PROPERTY(editable, BOOL)
 HIPPY_EXPORT_VIEW_PROPERTY(showScrollIndicator, BOOL)
 HIPPY_EXPORT_VIEW_PROPERTY(scrollEnabled, BOOL)
 HIPPY_EXPORT_VIEW_PROPERTY(horizontal, BOOL)
+HIPPY_EXPORT_VIEW_PROPERTY(nestedScrollPriority, HippyNestedScrollPriority)
+HIPPY_EXPORT_VIEW_PROPERTY(nestedScrollTopPriority, HippyNestedScrollPriority)
+HIPPY_EXPORT_VIEW_PROPERTY(nestedScrollLeftPriority, HippyNestedScrollPriority)
+HIPPY_EXPORT_VIEW_PROPERTY(nestedScrollBottomPriority, HippyNestedScrollPriority)
+HIPPY_EXPORT_VIEW_PROPERTY(nestedScrollRightPriority, HippyNestedScrollPriority)
+
 
 - (UIView *)view {
     return [[HippyNextBaseListView alloc] init];
@@ -56,9 +62,9 @@ HIPPY_EXPORT_VIEW_PROPERTY(horizontal, BOOL)
 }
 
 HIPPY_EXPORT_METHOD(scrollToIndex:(nonnull NSNumber *)componentTag
-                    xIndex:(__unused NSNumber *)xIndex
-					yIndex:(NSNumber *)yIndex
-					animation:(nonnull NSNumber *)animation) {
+                    xIndex:(nonnull NSNumber *)xIndex
+                    yIndex:(nonnull NSNumber *)yIndex
+                    animation:(nonnull NSNumber *)animation) {
     [self.bridge.uiManager addUIBlock:
      ^(__unused HippyUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry){
         HippyNextBaseListView *view = (HippyNextBaseListView *)viewRegistry[componentTag];

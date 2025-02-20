@@ -115,6 +115,9 @@ class TaskRunner {
   friend class WorkerManager;
   friend class IdleTimer;
 
+  inline const std::weak_ptr<Worker>& GetWorker() {
+    return worker_;
+  }
   void NotifyWorker();
   std::unique_ptr<Task> popTaskFromDelayedQueueNoLock(TimePoint now);
   std::unique_ptr<Task> PopTask();
@@ -122,6 +125,8 @@ class TaskRunner {
   std::unique_ptr<IdleTask> PopIdleTask();
   std::unique_ptr<Task> GetTopDelayTask();
   std::unique_ptr<Task> GetNext();
+  bool HasTask();
+  bool HasMoreUrgentTask(TimeDelta min_wait_time, TimePoint now);
 
   std::queue<std::unique_ptr<Task>> task_queue_;
   std::mutex queue_mutex_;

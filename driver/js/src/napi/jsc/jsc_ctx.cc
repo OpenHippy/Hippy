@@ -50,28 +50,36 @@ constexpr char16_t kSetStr[] = u"set";
 static std::once_flag global_class_flag;
 static JSClassRef global_class;
 static ConstructorDataManager* global_constructor_data_mgr = nullptr;
+static ContextValidManager* global_context_valid_mgr = nullptr;
 
 JSCCtx::JSCCtx(JSContextGroupRef group, std::weak_ptr<VM> vm): vm_(vm) {
   std::call_once(global_class_flag, []() {
     JSClassDefinition global = kJSClassDefinitionEmpty;
     global_class = JSClassCreate(&global);
     global_constructor_data_mgr = new ConstructorDataManager();
+    global_context_valid_mgr = new ContextValidManager();
   });
 
   context_ = JSGlobalContextCreateInGroup(group, global_class);
+  if (global_context_valid_mgr) {
+    global_context_valid_mgr->SaveContextPtr(context_);
+  }
 
   exception_ = nullptr;
   is_exception_handled_ = false;
-
 }
 
 JSCCtx::~JSCCtx() {
-  JSGlobalContextRelease(context_);
   for (auto& [key, item] : constructor_data_holder_) {
     item->prototype = nullptr;
     if (global_constructor_data_mgr) {
       global_constructor_data_mgr->ClearConstructorDataPtr(item.get());
     }
+  }
+  JSGarbageCollect(context_);
+  JSGlobalContextRelease(context_);
+  if (global_context_valid_mgr) {
+    global_context_valid_mgr->ClearContextPtr(context_);
   }
 }
 
@@ -81,6 +89,10 @@ JSValueRef InvokeJsCallback(JSContextRef ctx,
                             size_t argument_count,
                             const JSValueRef arguments[],
                             JSValueRef* exception) {
+  auto context = JSContextGetGlobalContext(ctx);
+  if (!global_context_valid_mgr || !global_context_valid_mgr->IsValidContextPtr(context)) {
+    return JSValueMakeUndefined(ctx);
+  }
   void* data = JSObjectGetPrivate(function);
   if (!data) {
     return JSValueMakeUndefined(ctx);
@@ -92,14 +104,17 @@ JSValueRef InvokeJsCallback(JSContextRef ctx,
   JSObjectRef global_object = JSContextGetGlobalObject(ctx);
   auto global_external_data = JSObjectGetPrivate(global_object);
   cb_info.SetSlot(global_external_data);
-  auto context = JSContextGetGlobalContext(ctx);
   cb_info.SetReceiver(std::make_shared<JSCCtxValue>(context, object));
   if (object != global_object) {
     auto object_private_data = JSObjectGetPrivate(object);
     if (object_private_data) {
       auto constructor_data = reinterpret_cast<ConstructorData*>(object_private_data);
-      auto object_data = constructor_data->object_data_map[object];
-      cb_info.SetData(object_data);
+      auto it = constructor_data->object_data_map.find(object);
+      if (it != constructor_data->object_data_map.end()) {
+        cb_info.SetData(it->second);
+      } else {
+        cb_info.SetData(nullptr);
+      }
     }
   }
   for (size_t i = 0; i < argument_count; i++) {
@@ -126,6 +141,10 @@ JSObjectRef InvokeConstructorCallback(JSContextRef ctx,
                                       size_t argument_count,
                                       const JSValueRef arguments[],
                                       JSValueRef* exception) {
+  auto context = JSContextGetGlobalContext(ctx);
+  if (!global_context_valid_mgr || !global_context_valid_mgr->IsValidContextPtr(context)) {
+    return constructor;
+  }
   void* data = JSObjectGetPrivate(constructor);
   if (!data) {
     JSStringRef string_ref = JSCVM::CreateJSCString("InvokeConstructorCallback JSObjectGetPrivate error");
@@ -143,7 +162,6 @@ JSObjectRef InvokeConstructorCallback(JSContextRef ctx,
   JSObjectRef global_obj = JSContextGetGlobalObject(ctx);
   auto global_external_data = JSObjectGetPrivate(global_obj);
   cb_info.SetSlot(global_external_data);
-  auto context = JSContextGetGlobalContext(ctx);
   auto proto = std::static_pointer_cast<JSCCtxValue>(constructor_data->prototype)->value_;
   JSObjectSetPrototype(ctx, instance, proto);
   cb_info.SetReceiver(std::make_shared<JSCCtxValue>(context, instance));
@@ -393,7 +411,7 @@ std::shared_ptr<CtxValue> JSCCtx::DefineClass(const string_view& name,
 
 std::shared_ptr<CtxValue> JSCCtx::NewInstance(const std::shared_ptr<CtxValue>& cls, int argc, std::shared_ptr<CtxValue> argv[], void* external) {
   auto jsc_cls = std::static_pointer_cast<JSCCtxValue>(cls);
-  JSValueRef values[argc];  // NOLINT(runtime/arrays)
+  std::vector<JSValueRef> values(argc);
   for (size_t i = 0; i < argc; i++) {
     auto arg_value = std::static_pointer_cast<JSCCtxValue>(argv[i]);
     values[i] = arg_value->value_;
@@ -411,7 +429,7 @@ std::shared_ptr<CtxValue> JSCCtx::NewInstance(const std::shared_ptr<CtxValue>& c
       constructor_data->object_data_map[clazz] = external;
     }
   }
-  auto ret = JSObjectCallAsConstructor(context_, clazz, argc, values, &exception);
+  auto ret = JSObjectCallAsConstructor(context_, clazz, argc, values.data(), &exception);
   if (exception) {
     SetException(std::make_shared<JSCCtxValue>(context_, exception));
     return nullptr;
@@ -801,21 +819,18 @@ std::shared_ptr<CtxValue> JSCCtx::CreateObject(const std::unordered_map<std::sha
 
 std::shared_ptr<CtxValue> JSCCtx::CreateArray(size_t count,
                                               std::shared_ptr<CtxValue> array[]) {
-  if (count < 0) {
-    return nullptr;
-  }
-  if (0 == count) {
+  if (count == 0) {
     return std::make_shared<JSCCtxValue>(context_, JSObjectMakeArray(context_, 0, nullptr, nullptr));
   }
-
-  JSValueRef values[count];  // NOLINT(runtime/arrays)
+  
+  std::vector<JSValueRef> values(count);
   for (size_t i = 0; i < count; i++) {
     auto ele_value = std::static_pointer_cast<JSCCtxValue>(array[i]);
     values[i] = ele_value ? ele_value->value_ : nullptr;
   }
 
   JSValueRef exception = nullptr;
-  JSValueRef value_ref = JSObjectMakeArray(context_, count, values, &exception);
+  JSValueRef value_ref = JSObjectMakeArray(context_, count, values.data(), &exception);
   if (exception) {
     SetException(std::make_shared<JSCCtxValue>(context_, exception));
     return nullptr;
@@ -913,13 +928,13 @@ std::shared_ptr<CtxValue> JSCCtx::CallFunction(const std::shared_ptr<CtxValue>& 
     return std::make_shared<JSCCtxValue>(context_, ret_value_ref);
   }
 
-  JSValueRef values[argc];  // NOLINT(runtime/arrays)
+  std::vector<JSValueRef> values(argc);
   for (size_t i = 0; i < argc; i++) {
     auto arg_value = std::static_pointer_cast<JSCCtxValue>(argv[i]);
     values[i] = arg_value->value_;
   }
 
-  auto ret_value_ref = JSObjectCallAsFunction(context_, function_object, receiver_object, argc, values, &exception);
+  auto ret_value_ref = JSObjectCallAsFunction(context_, function_object, receiver_object, argc, values.data(), &exception);
   if (exception) {
     SetException(std::make_shared<JSCCtxValue>(context_, exception));
     return nullptr;

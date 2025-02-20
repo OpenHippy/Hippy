@@ -91,6 +91,7 @@ class Worker {
  private:
   friend class WorkerManager;
   friend class TaskRunner;
+  friend class Scheduler;
 
   static uint32_t GetCurrentWorkerId();
   // 该方法只允许在task运行中调用，如果在task之外调用则会返回nullptr
@@ -101,6 +102,9 @@ class Worker {
   bool HasUnschedulableRunner();
   void BalanceNoLock();
   void SortNoLock();
+
+  bool HasTask();
+  bool HasMoreUrgentTask(TimeDelta min_wait_time, TimePoint now);
 
   int32_t WorkerKeyCreate(uint32_t task_runner_id, const std::function<void(void *)>& destruct);
   bool WorkerKeyDelete(uint32_t task_runner_id, int32_t key);

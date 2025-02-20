@@ -39,6 +39,7 @@
 #import "NSObject+CtxValue.h"
 #import "TypeConverter.h"
 #import "HippyBridge+Private.h"
+#import "HippyBridge+ModuleManage.h"
 
 #include <cinttypes>
 #include <memory>
@@ -109,11 +110,9 @@ constexpr char kHippyGetTurboModule[] = "getTurboModule";
     
     __weak __typeof(self)weakSelf = self;
     hippy::base::RegisterFunction taskEndCB = [weakSelf](void *) {
-        @autoreleasepool {
             HippyJSExecutor *strongSelf = weakSelf;
             if (strongSelf) {
                 handleJsExcepiton(strongSelf.pScope);
-            }
         }
     };
     scope->RegisterExtraCallback(hippy::kAsyncTaskEndKey, taskEndCB);
@@ -121,69 +120,68 @@ constexpr char kHippyGetTurboModule[] = "getTurboModule";
     dispatch_semaphore_t scopeSemaphore = dispatch_semaphore_create(0);
     footstone::TimePoint startPoint = footstone::TimePoint::SystemNow();
     engine->GetEngine()->GetJsTaskRunner()->PostTask([weakSelf, scopeSemaphore, startPoint](){
-        @autoreleasepool {
-            __strong __typeof(weakSelf)strongSelf = weakSelf;
+        __strong __typeof(weakSelf)strongSelf = weakSelf;
             if (!strongSelf) {
                 return;
             }
-            HippyBridge *bridge = strongSelf.bridge;
-            if (!bridge) {
-                return;
-            }
-            
-            dispatch_semaphore_wait(scopeSemaphore, DISPATCH_TIME_FOREVER);
-            auto scope = strongSelf.pScope;
-            scope->CreateContext();
-            auto context = scope->GetContext();
-            auto global_object = context->GetGlobalObject();
-            
-            // add `global` property to global object
-            auto user_global_object_key = context->CreateString(kGlobalKey);
-            context->SetProperty(global_object, user_global_object_key, global_object);
-            
-            // add `Hippy` property to global object
-            auto hippy_key = context->CreateString(kHippyKey);
-            context->SetProperty(global_object, hippy_key, context->CreateObject());
-                        
-            // inject device info to `__HIPPYNATIVEGLOBAL__`
-            [strongSelf injectDeviceInfoAsHippyNativeGlobal:bridge context:context globalObject:global_object];
-            
-            // register `nativeRequireModuleConfig` function
-            [strongSelf registerRequiredModuleConfigFuncToJS:context globalObject:global_object scope:scope];
-            
-            // register `nativeFlushQueueImmediate` function
-            [strongSelf registerFlushQueueImmediateFuncToJS:context globalObject:global_object scope:scope];
-            
-            // register `getTurboModule` function
-            [strongSelf registerGetTurboModuleFuncToJS:context globalObject:global_object scope:scope];
-            
-            // call finish block
-            if (strongSelf.contextCreatedBlock) {
-                strongSelf.contextCreatedBlock();
-            }
-            scope->SyncInitialize();
-            
-            // performance record
-            footstone::TimePoint endTime = footstone::TimePoint::SystemNow();
-            auto entry = scope->GetPerformance()->PerformanceNavigation(hippy::kPerfNavigationHippyInit);
-            if (entry) {
-                entry->SetHippyJsEngineInitStart(startPoint);
-                entry->SetHippyJsEngineInitEnd(endTime);
-                entry->SetHippyNativeInitStart(strongSelf.bridge.startTime);
-                entry->SetHippyNativeInitEnd(endTime);
-            }
-            
-            // the last, execute pending blocks
-            NSArray<dispatch_block_t> *pendingCalls;
-            @synchronized (strongSelf) {
-                strongSelf.ready = YES;
-                pendingCalls = [strongSelf.pendingCalls copy];
-                [strongSelf.pendingCalls removeAllObjects];
-            }
-            [pendingCalls enumerateObjectsUsingBlock:^(dispatch_block_t  _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
-                [strongSelf executeBlockOnJavaScriptQueue:obj];
-            }];
+        HippyBridge *bridge = strongSelf.bridge;
+        if (!bridge) {
+            return;
         }
+        
+        dispatch_semaphore_wait(scopeSemaphore, DISPATCH_TIME_FOREVER);
+        auto scope = strongSelf.pScope;
+        scope->CreateContext();
+        auto context = scope->GetContext();
+        auto global_object = context->GetGlobalObject();
+        
+        
+        // add `global` property to global object
+        auto user_global_object_key = context->CreateString(kGlobalKey);
+        context->SetProperty(global_object, user_global_object_key, global_object);
+        
+        // add `Hippy` property to global object
+        auto hippy_key = context->CreateString(kHippyKey);
+        context->SetProperty(global_object, hippy_key, context->CreateObject());
+        
+        // inject device info to `__HIPPYNATIVEGLOBAL__`
+        [strongSelf injectDeviceInfoAsHippyNativeGlobal:bridge context:context globalObject:global_object];
+        
+        // register `nativeRequireModuleConfig` function
+        [strongSelf registerRequiredModuleConfigFuncToJS:context globalObject:global_object scope:scope];
+        
+        // register `nativeFlushQueueImmediate` function
+        [strongSelf registerFlushQueueImmediateFuncToJS:context globalObject:global_object scope:scope];
+        
+        // register `getTurboModule` function
+        [strongSelf registerGetTurboModuleFuncToJS:context globalObject:global_object scope:scope];
+        
+        // call finish block
+        if (strongSelf.contextCreatedBlock) {
+            strongSelf.contextCreatedBlock();
+        }
+        scope->SyncInitialize();
+        
+        // performance record
+        footstone::TimePoint endTime = footstone::TimePoint::SystemNow();
+        auto entry = scope->GetPerformance()->PerformanceNavigation(hippy::kPerfNavigationHippyInit);
+        if (entry) {
+            entry->SetHippyJsEngineInitStart(startPoint);
+            entry->SetHippyJsEngineInitEnd(endTime);
+            entry->SetHippyNativeInitStart(strongSelf.bridge.startTime);
+            entry->SetHippyNativeInitEnd(endTime);
+        }
+        
+        // the last, execute pending blocks
+        NSArray<dispatch_block_t> *pendingCalls;
+        @synchronized (strongSelf) {
+            strongSelf.ready = YES;
+            pendingCalls = [strongSelf.pendingCalls copy];
+            [strongSelf.pendingCalls removeAllObjects];
+        }
+        [pendingCalls enumerateObjectsUsingBlock:^(dispatch_block_t  _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
+            [strongSelf executeBlockOnJavaScriptQueue:obj];
+        }];
     });
     _pScope = scope;
     dispatch_semaphore_signal(scopeSemaphore);
@@ -194,7 +192,8 @@ constexpr char kHippyGetTurboModule[] = "getTurboModule";
         NSString *wsURL = [self completeWSURLWithBridge:bridge];
         if (wsURL.length > 0) {
             auto workerManager = std::make_shared<footstone::WorkerManager>(1);
-            auto devtools_data_source = std::make_shared<hippy::devtools::DevtoolsDataSource>([wsURL UTF8String], workerManager);
+            auto devtools_data_source = std::make_shared<hippy::devtools::DevtoolsDataSource>();
+            devtools_data_source->CreateDevtoolsService([wsURL UTF8String], workerManager);
             self.pScope->SetDevtoolsDataSource(devtools_data_source);
         }
     }
@@ -235,9 +234,8 @@ constexpr char kHippyGetTurboModule[] = "getTurboModule";
     HippyLogInfo(@"[Hippy_OC_Log][Life_Circle],HippyJSCExecutor invalide %p", self);
     _valid = NO;
 #ifdef JS_JSC
-    auto scope = self.pScope;
-    if (scope) {
-        auto jsc_context = std::static_pointer_cast<hippy::napi::JSCCtx>(scope->GetContext());
+    if (self.pScope) {
+        auto jsc_context = std::static_pointer_cast<hippy::napi::JSCCtx>(self.pScope->GetContext());
         static CFStringRef delName = CFSTR("HippyJSContext(delete)");
         jsc_context->SetName(delName);
     }
@@ -567,13 +565,13 @@ constexpr char kHippyGetTurboModule[] = "getTurboModule";
                     SharedCtxValuePtr method_value = context->GetProperty(batchedbridge_value, methodName);
                     if (method_value) {
                         if (context->IsFunction(method_value)) {
-                            SharedCtxValuePtr function_params[arguments.count];
+                            std::vector<SharedCtxValuePtr> function_params(arguments.count);
                             for (NSUInteger i = 0; i < arguments.count; i++) {
                                 id obj = arguments[i];
                                 function_params[i] = [obj convertToCtxValue:context];
                             }
                             auto tryCatch = hippy::CreateTryCatchScope(true, context);
-                            resultValue = context->CallFunction(method_value, context->GetGlobalObject(), arguments.count, function_params);
+                            resultValue = context->CallFunction(method_value, context->GetGlobalObject(), arguments.count, function_params.data());
                             if (tryCatch->HasCaught()) {
                                 exception = tryCatch->GetExceptionMessage();
                             }
@@ -603,7 +601,7 @@ constexpr char kHippyGetTurboModule[] = "getTurboModule";
                 [userInfo setObject:moduleName forKey:HippyFatalModuleName];
                 [userInfo setObject:arguments?:[NSArray array] forKey:@"arguments"];
                 NSException *reportException = [NSException exceptionWithName:exception.name reason:exception.reason userInfo:userInfo];
-                HippyBridgeHandleException(reportException, self.bridge);
+                HippyHandleException(reportException);
             }
         }
     }];
