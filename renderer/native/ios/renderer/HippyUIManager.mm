@@ -52,6 +52,8 @@
 #import "HippyJSExecutor.h"
 #import "HippyShadowText.h"
 #import "HippyShadowTextView.h"
+#import "HippyDeviceBaseInfo.h"
+#import "HippyEventDispatcher.h"
 #import "dom/root_node.h"
 #import <objc/runtime.h>
 #import <os/lock.h>
@@ -204,6 +206,7 @@ NSString *const HippyFontChangeTriggerNotification = @"HippyFontChangeTriggerNot
 @implementation HippyUIManager
 
 @synthesize domManager = _domManager;
+@synthesize globalFontSizeMultiplier = _globalFontSizeMultiplier;
 
 #pragma mark Life cycle
 
@@ -228,6 +231,7 @@ NSString *const HippyFontChangeTriggerNotification = @"HippyFontChangeTriggerNot
     _componentDataLock = OS_UNFAIR_LOCK_INIT;
     HippyScreenScale();
     HippyScreenSize();
+    [self updateGlobalFontSizeMultiplier];
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(onFontChangedFromNative:)
                                                  name:HippyFontChangeTriggerNotification
@@ -370,6 +374,9 @@ NSString *const HippyFontChangeTriggerNotification = @"HippyFontChangeTriggerNot
     [self->_shadowViewRegistry addRootComponent:shadowView rootNode:rootNode forTag:hippyTag];
     
     
+    NSDictionary *dimensions = hippyExportedDimensions(self.bridge, @(frame.size));
+    [self.bridge.eventDispatcher dispatchDimensionsUpdateEvent:dimensions];
+    
     NSDictionary *userInfo = @{ HippyUIManagerRootViewKey: rootView, HippyUIManagerRootViewTagKey: hippyTag };
     [[NSNotificationCenter defaultCenter] postNotificationName:HippyUIManagerDidRegisterRootViewNotification
                                                         object:self
@@ -426,13 +433,15 @@ NSString *const HippyFontChangeTriggerNotification = @"HippyFontChangeTriggerNot
                 domManager->PostTask(hippy::Scene({func}));
                 
                 HippyBridge *bridge = self.bridge;
-                [bridge sendEvent:@(hippyOnSizeChangedKey) params:params];
+                NSDictionary *dimensions = hippyExportedDimensions(self.bridge, @(curFrame.size));
+                [bridge.eventDispatcher dispatchDimensionsUpdateEvent:dimensions];
+                [bridge.eventDispatcher dispatchNativeEvent:@(hippyOnSizeChangedKey) withParams:params];
             }
         }
     }
 }
 
-- (void)setFrame:(CGRect)frame forView:(UIView *)view{
+- (void)setFrame:(CGRect)frame forView:(UIView *)view {
     NSNumber* hippyTag = view.hippyTag;
     NSNumber* rootTag = view.rootTag;
     
@@ -440,19 +449,20 @@ NSString *const HippyFontChangeTriggerNotification = @"HippyFontChangeTriggerNot
     if (!domManager) {
         return;
     }
-    __weak id weakSelf = self;
+    
+    __weak __typeof(self)weakSelf = self;
     std::vector<std::function<void()>> ops_ = {[hippyTag, rootTag, weakSelf, frame]() {
-        HippyUIManager *strongSelf = weakSelf;
+        __strong __typeof(weakSelf)strongSelf = weakSelf;
         if (!strongSelf) {
             return;
         }
-        HippyShadowView *renderObject = [strongSelf->_shadowViewRegistry componentForTag:hippyTag onRootTag:rootTag];
-        if (renderObject == nil) {
+        HippyShadowView *shadowView = [strongSelf->_shadowViewRegistry componentForTag:hippyTag onRootTag:rootTag];
+        if (!shadowView) {
             return;
         }
         
-        if (!HippyCGRectRoundInPixelNearlyEqual(frame, renderObject.frame)) {
-            [renderObject setLayoutFrame:frame];
+        if (!HippyCGRectRoundInPixelNearlyEqual(frame, shadowView.frame)) {
+            [shadowView setLayoutFrame:frame];
             std::weak_ptr<RootNode> rootNode = [strongSelf->_shadowViewRegistry rootNodeForTag:rootTag];
             [strongSelf batchOnRootNode:rootNode];
         }
@@ -548,7 +558,12 @@ NSString *const HippyFontChangeTriggerNotification = @"HippyFontChangeTriggerNot
             view.rootTag = rootTag;
             view.hippyShadowView = shadowView;
             view.uiManager = self;
-            [componentData setProps:props forView:view];  // Must be done before bgColor to prevent wrong default
+            @try {
+                [componentData setProps:props forView:view];  // Must be done before bgColor to prevent wrong default
+            } @catch (NSException *exception) {
+                HippyLogError(@"Exception while setting props for view (%@ of %@), %@", view.class, view.hippyTag, props);
+            }
+            
         }
     }
     return view;
@@ -574,7 +589,11 @@ NSString *const HippyFontChangeTriggerNotification = @"HippyFontChangeTriggerNot
             // Note: viewRegistry may be modified in the block, and it may be stored internally as NSMapTable
             // so to ensure that it is up-to-date, it can only be retrieved each time.
             NSDictionary<NSNumber *, UIView *> *viewRegistry = [self.viewRegistry componentsForRootTag:shadowView.rootTag];
-            block(viewRegistry, nil);
+            @try {
+                block(viewRegistry, nil);
+            } @catch (NSException *exception) {
+                HippyLogError(@"Exception while executing blocks when create list! %@", shadowView);
+            }
         }
     }
     [self.viewRegistry clearTempCacheAfterAcquireAllStoredWeakComponentsForRootTag:shadowView.rootTag];
@@ -744,6 +763,7 @@ NSString *const HippyFontChangeTriggerNotification = @"HippyFontChangeTriggerNot
 #pragma mark Schedule Block
 
 - (void)addUIBlock:(HippyViewManagerUIBlock)block {
+    HippyAssertNotMainQueue();
     if (!block || !_viewRegistry) {
         return;
     }
@@ -778,7 +798,7 @@ NSString *const HippyFontChangeTriggerNotification = @"HippyFontChangeTriggerNot
                         // Note: viewRegistry may be modified in the block, and it may be stored internally as NSMapTable
                         // so to ensure that it is up-to-date, it can only be retrieved each time.
                         NSDictionary* viewReg = [strongSelf.viewRegistry componentsForRootTag:@(rootTag)];
-                        block(strongSelf, viewReg);
+                        if (block) block(strongSelf, viewReg);
                     } @catch (NSException *exception) {
                         HippyLogError(@"Exception thrown while executing UI block: %@", exception);
                     }
@@ -1070,11 +1090,11 @@ NSString *const HippyFontChangeTriggerNotification = @"HippyFontChangeTriggerNot
         NSNumber *componentTag = @(tag);
         hippy::LayoutResult layoutResult = std::get<1>(layoutInfoTuple);
         CGRect frame = CGRectMakeFromLayoutResult(layoutResult);
-        HippyShadowView *renderObject = [_shadowViewRegistry componentForTag:componentTag onRootTag:rootTag];
-        if (renderObject) {
-            [renderObject dirtyPropagation:NativeRenderUpdateLifecycleLayoutDirtied];
-            renderObject.frame = frame;
-            renderObject.nodeLayoutResult = layoutResult;
+        HippyShadowView *shadowView = [_shadowViewRegistry componentForTag:componentTag onRootTag:rootTag];
+        if (shadowView) {
+            [shadowView dirtyPropagation:NativeRenderUpdateLifecycleLayoutDirtied];
+            shadowView.frame = frame;
+            shadowView.nodeLayoutResult = layoutResult;
             [self addUIBlock:^(__unused HippyUIManager *uiManager, NSDictionary<NSNumber *,__kindof UIView *> *viewRegistry) {
                 UIView *view = viewRegistry[componentTag];
                 /* do not use frame directly, because shadow view's frame possibly changed manually in
@@ -1082,7 +1102,7 @@ NSString *const HippyFontChangeTriggerNotification = @"HippyFontChangeTriggerNot
                  * This is a Wrong example:
                  * [view hippySetFrame:frame]
                  */
-                [view hippySetFrame:renderObject.frame];
+                [view hippySetFrame:shadowView.frame];
             }];
         }
     }
@@ -1518,12 +1538,36 @@ NSString *const HippyFontChangeTriggerNotification = @"HippyFontChangeTriggerNot
 
 #pragma mark - Font Refresh
 
+- (NSNumber *)globalFontSizeMultiplier {
+    @synchronized (self) {
+        return _globalFontSizeMultiplier;
+    }
+}
+
+- (void)updateGlobalFontSizeMultiplier {
+    if ([self.bridge.delegate respondsToSelector:@selector(fontSizeMultiplierForHippy:)]) {
+        CGFloat scale = [self.bridge.delegate fontSizeMultiplierForHippy:self.bridge];
+        if (scale >= 0.0) {
+            @synchronized (self) {
+                if (_globalFontSizeMultiplier || (!_globalFontSizeMultiplier && scale != 1.0)) {
+                    _globalFontSizeMultiplier = @(scale);
+                }
+            }
+        } else {
+            HippyLogError(@"Illegal Global FontSizeMultiplier:%f, current:%@", scale, self.globalFontSizeMultiplier);
+        }
+    }
+}
+
 - (void)onFontChangedFromNative:(NSNotification *)notification {
     NSNumber *targetRootTag = notification.object;
     if ((targetRootTag != nil) && ![self.viewRegistry containRootComponentWithTag:targetRootTag]) {
         // do compare if notification has target RootView.
         return;
     }
+    
+    // update fontSize multiplier
+    [self updateGlobalFontSizeMultiplier];
     
     __weak __typeof(self)weakSelf = self;
     [self.bridge.javaScriptExecutor executeAsyncBlockOnJavaScriptQueue:^{
@@ -1540,6 +1584,7 @@ NSString *const HippyFontChangeTriggerNotification = @"HippyFontChangeTriggerNot
             allRootTags = strongSelf->_shadowViewRegistry.allRootTags;
         }
         
+        CGFloat fontSizeMultiplier = [strongSelf.globalFontSizeMultiplier doubleValue];
         for (NSNumber *rootTag in allRootTags) {
             NSArray<HippyShadowView *> *shadowViews = [strongSelf->_shadowViewRegistry componentsForRootTag:rootTag].allValues;
             Class shadowTextClass = [HippyShadowText class];
@@ -1547,6 +1592,9 @@ NSString *const HippyFontChangeTriggerNotification = @"HippyFontChangeTriggerNot
             for (HippyShadowView *shadowView in shadowViews) {
                 if ([shadowView isKindOfClass:shadowTextClass] ||
                     [shadowView isKindOfClass:shadowTextViewClass]) {
+                    if (fontSizeMultiplier > 0.0) {
+                        ((HippyShadowText *)shadowView).fontSizeMultiplier = fontSizeMultiplier;
+                    }
                     [shadowView dirtyText:NO];
                     [shadowView dirtyPropagation:NativeRenderUpdateLifecycleLayoutDirtied];
                 }

@@ -29,7 +29,7 @@ import { FrameNode } from '@kit.ArkUI';
 import { TurboModuleManager } from '../hippy_framework/modules/turbo/TurboModuleManager';
 import { NodeContent } from '@ohos.arkui.node';
 import { HRPosition, HRRect } from '../renderer_native/utils/HRTypes';
-import { HippyLayoutEngineType } from "../hippy_framework";
+import { HippyLayoutEngineType } from "../hippy_framework/HippyEngine";
 
 export interface HippyRenderViewInfo {
   tag: number
@@ -82,24 +82,25 @@ export interface HippyLibrary {
     callback: NativeCallback
   ): boolean;
   JsDriver_SetRootNode(instanceId: number, rootId: number): void;
-  JsDriver_OnNativeInitEnd(instanceId: number, startTime: number, endTime: number): void;
-  JsDriver_OnFirstFrameEnd(instanceId: number, rootId: number, time: number): void;
+  JsDriver_OnNativeInitEnd(instanceId: number, startTime: bigint, endTime: bigint): void;
   JsDriver_OnResourceLoadEnd(
     instanceId: number,
     uri: string,
-    startTime: number,
-    endTime: number,
+    startTime: bigint,
+    endTime: bigint,
     retCode: number,
     errorMsg: string): void;
   JsDriver_CallFunction(instanceId: number, action: string, callback: NativeCallback, buffer: ArrayBuffer): void;
 
   NativeRenderer_CreateNativeRenderManager(enableArkCApi: boolean, renderProvider: NativeRenderProvider,
     customRenderViews: Array<string> | null, customMeasureRenderViews: Array<string> | null, mappingRenderViews: Array<string> | null,
-    bundlePath: string, density: number, densityScale: number, fontSizeScale: number, isRawfile: boolean, resModuleName: string): number;
+    bundlePath: string, density: number, densityScale: number, fontSizeScale: number, fontWeightScale: number,
+    isRawfile: boolean, resModuleName: string): number;
   NativeRenderer_DestroyNativeRenderManager(instanceId: number): void;
   NativeRenderer_SetBundlePath(instanceId: number, bundlePath: string): void;
   NativeRenderer_InitRendererParams(statusBarHeight: number): void;
   NativeRenderer_RegisterFontPaths(instanceId: number, fontFamilyAndPaths: Array<string>): void;
+  NativeRenderer_KeyboardHeightChange(height: number): void;
 
   NativeRenderProvider_UpdateRootSize(instanceId: number, rootId: number, width: number, height: number): void;
   NativeRenderProvider_UpdateNodeSize(instanceId: number, rootId: number, nodeId: number, width: number, height: number, isSync: boolean): void;
@@ -132,4 +133,5 @@ export interface HippyLibrary {
   Setting_SetDensity(density: number): void;
   Setting_SetDensityScale(densityScale: number): void;
   Setting_SetFontSizeScale(fontSizeScale: number): void;
+  Setting_SetFontWeightScale(fontWeightScale: number): void;
 }

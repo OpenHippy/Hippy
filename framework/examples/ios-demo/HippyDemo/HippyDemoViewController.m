@@ -38,12 +38,14 @@
 
 - (instancetype)initWithDriverType:(DriverType)driverType
                         renderType:(RenderType)renderType
+                   useHermesEngine:(BOOL)usingHermes
                           debugURL:(NSURL *)debugURL
                        isDebugMode:(BOOL)isDebugMode {
     self = [super init];
     if (self) {
         _driverType = driverType;
         _renderType = renderType;
+        _useHermesEngine = usingHermes;
         _debugURL = debugURL;
         _debugMode = isDebugMode;
     }
@@ -93,13 +95,21 @@
 - (void)registerLogFunction {
     // Register your custom log function for Hippy,
     // use HippyDefaultLogFunction as an example, it outputs logs to stderr.
-    HippySetLogFunction(HippyDefaultLogFunction);
+    HippySetLogFunction(^(HippyLogLevel level, HippyLogSource source, NSString *fileName, NSNumber *lineNumber, NSString *message) {
+        // output hippy sdk's log to your App log
+        // this is a demo imp, output to console:
+        HippyDefaultLogFunction(level, source, fileName, lineNumber, message);
+    });
 }
 
 - (void)runHippyDemo {
     // Necessary configuration:
     NSString *moduleName = @"Demo";
-    NSDictionary *launchOptions = @{ @"DebugMode": @(_debugMode) };
+    // Set launch options for hippy bridge
+    HippyLaunchOptions *launchOptions = [HippyLaunchOptions new];
+    launchOptions.debugMode = _debugMode;
+    launchOptions.useHermesEngine = _useHermesEngine;
+    // Prepare initial properties for js side
     NSDictionary *initialProperties = @{ @"isSimulator": @(TARGET_OS_SIMULATOR) };
     
     HippyBridge *bridge = nil;
@@ -132,6 +142,7 @@
     // Config whether jsc is inspectable, Highly recommended setting,
     // since inspectable of JSC is disabled by default since iOS 16.4
     [bridge setInspectable:YES];
+    
     _hippyBridge = bridge;
     rootView.frame = self.contentAreaView.bounds;
     rootView.autoresizingMask = UIViewAutoresizingFlexibleHeight | UIViewAutoresizingFlexibleWidth;
@@ -180,10 +191,14 @@
     pageCache.renderType = _renderType;
     pageCache.debugURL = _debugURL;
     pageCache.debugMode = _debugMode;
-    UIGraphicsBeginImageContextWithOptions(_hippyRootView.bounds.size, NO, [UIScreen mainScreen].scale);
-    [_hippyRootView drawViewHierarchyInRect:_hippyRootView.bounds afterScreenUpdates:YES];
-    UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
+    
+    // Render view hierarchy into image context
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:_hippyRootView.bounds.size format:format];
+    UIImage *image = [renderer imageWithActions:^(UIGraphicsImageRendererContext * _Nonnull context) {
+        [_hippyRootView drawViewHierarchyInRect:_hippyRootView.bounds afterScreenUpdates:YES];
+    }];
+
     pageCache.snapshot = image;
     return pageCache;
 }
@@ -207,6 +222,14 @@
     // You can customize to any url.
     // By default, we resolve the devtools address from the debug url passed to the bridge.
     return bridge.debugURL;
+}
+
+- (CGFloat)fontSizeMultiplierForHippy:(HippyBridge *)bridge {
+    // This is a demo implementation, you can customize it.
+    // The default value is 1.0.
+    // The font size multiplier is used to scale the font size of the text in the Hippy view.
+    // For example, if you set it to 2.0, the font size will be twice as large as the default size.
+    return 1.0;
 }
 
 

@@ -21,6 +21,7 @@
  */
 
 #include "renderer/components/text_input_view.h"
+#include "renderer/uimanager/hr_keyboard_manager.h"
 #include "renderer/utils/hr_event_utils.h"
 #include "renderer/utils/hr_pixel_utils.h"
 #include "renderer/utils/hr_value_utils.h"
@@ -35,7 +36,9 @@ inline namespace native {
 
 TextInputView::TextInputView(std::shared_ptr<NativeRenderContext> &ctx) : BaseView(ctx) {}
 
-TextInputView::~TextInputView() {}
+TextInputView::~TextInputView() {
+  RemoveKeyboardListener();
+}
 
 StackNode *TextInputView::GetLocalRootArkUINode() { return stackNode_.get(); }
 
@@ -111,14 +114,14 @@ bool TextInputView::SetPropImpl(const std::string &propKey, const HippyValue &pr
     }
     return true;
   } else if (propKey == "defaultValue" || propKey == "value") {
-    auto value = HRValueUtils::GetString(propValue);
+    auto& value = HRValueUtils::GetString(propValue);
     if (!value_.has_value() || value != value_) {
       value_ = value;
       SetPropFlag(TextInputPropValue);
     }
     return true;
   } else if (propKey == "fontFamily") {
-    auto value = HRValueUtils::GetString(propValue);
+    auto& value = HRValueUtils::GetString(propValue);
     if (!fontFamily_.has_value() || value != fontFamily_) {
       fontFamily_ = value;
       SetPropFlag(TextInputPropFontFamily);
@@ -132,7 +135,7 @@ bool TextInputView::SetPropImpl(const std::string &propKey, const HippyValue &pr
     }
     return true;
   } else if (propKey == "fontStyle") {
-    std::string style = HRValueUtils::GetString(propValue);
+    auto& style = HRValueUtils::GetString(propValue);
     auto fontStyle = ArkUI_FontStyle::ARKUI_FONT_STYLE_NORMAL;
     if(style == "italic") {
       fontStyle = ArkUI_FontStyle::ARKUI_FONT_STYLE_ITALIC;
@@ -166,7 +169,7 @@ bool TextInputView::SetPropImpl(const std::string &propKey, const HippyValue &pr
     SetTextAlignVertical(propValue);
     return true;
   } else if (propKey == "placeholder") {
-    auto value = HRValueUtils::GetString(propValue);
+    auto& value = HRValueUtils::GetString(propValue);
     if (!placeholder_.has_value() || value != placeholder_) {
       placeholder_ = value;
       SetPropFlag(TextInputPropPlaceholder);
@@ -209,9 +212,11 @@ bool TextInputView::SetPropImpl(const std::string &propKey, const HippyValue &pr
     return true;
   } else if (propKey == "keyboardwillshow") {
     isListenKeyboardWillShow_ = HRValueUtils::GetBool(propValue, false);
+    CheckAndAddKeyboardListener();
     return true;
   } else if (propKey == "keyboardwillhide") {
     isListenKeyboardWillHide_ = HRValueUtils::GetBool(propValue, false);
+    CheckAndAddKeyboardListener();
     return true;
   } else if (propKey == "contentSizeChange") {
     isListenContentSizeChange_ = HRValueUtils::GetBool(propValue, false);
@@ -328,7 +333,7 @@ void TextInputView::OnSetPropsEndImpl(){
 }
 
 void TextInputView::SetFontWeight(const HippyValue &propValue) {
-  std::string weight = HRValueUtils::GetString(propValue);
+  auto& weight = HRValueUtils::GetString(propValue);
   auto fontWeight = HRTextConvertUtils::FontWeightToArk(weight);
   if (!fontWeight_.has_value() || fontWeight != fontWeight_) {
     fontWeight_ = fontWeight;
@@ -338,7 +343,7 @@ void TextInputView::SetFontWeight(const HippyValue &propValue) {
 
 void TextInputView::SetTextAlign(const HippyValue &propValue) {
   auto textAlign = ArkUI_TextAlignment::ARKUI_TEXT_ALIGNMENT_START;
-  std::string align = HRValueUtils::GetString(propValue);
+  auto& align = HRValueUtils::GetString(propValue);
   if(align == "center") {
     textAlign = ArkUI_TextAlignment::ARKUI_TEXT_ALIGNMENT_CENTER;
   } else if (align == "right") {
@@ -352,7 +357,7 @@ void TextInputView::SetTextAlign(const HippyValue &propValue) {
 
 void TextInputView::SetTextAlignVertical(const HippyValue &propValue) {
   auto textAlignVertical = ArkUI_Alignment::ARKUI_ALIGNMENT_CENTER;
-  std::string align = HRValueUtils::GetString(propValue);
+  auto& align = HRValueUtils::GetString(propValue);
   if (align == "top") {
     textAlignVertical = ArkUI_Alignment::ARKUI_ALIGNMENT_TOP;
   } else if (align == "bottom") {
@@ -366,7 +371,7 @@ void TextInputView::SetTextAlignVertical(const HippyValue &propValue) {
 
 void TextInputView::SetKeyBoardType(const HippyValue &propValue){
   auto keyboardType = ArkUI_TextInputType::ARKUI_TEXTINPUT_TYPE_NORMAL;
-  std::string type = HRValueUtils::GetString(propValue);
+  auto& type = HRValueUtils::GetString(propValue);
   if(type == "numeric") {
     keyboardType = ArkUI_TextInputType::ARKUI_TEXTINPUT_TYPE_NUMBER;
   } else if (type == "password") {
@@ -384,7 +389,7 @@ void TextInputView::SetKeyBoardType(const HippyValue &propValue){
 
 void TextInputView::SetEntryKeyType(const HippyValue &propValue){
   auto returnKeyType = ArkUI_EnterKeyType::ARKUI_ENTER_KEY_TYPE_DONE;
-  std::string type = HRValueUtils::GetString(propValue);
+  auto& type = HRValueUtils::GetString(propValue);
   if (type == "go") {
     returnKeyType = ArkUI_EnterKeyType::ARKUI_ENTER_KEY_TYPE_GO;
   } else if (type == "next") {
@@ -436,7 +441,7 @@ void TextInputView::SetText(const HippyValueArrayType &params){
     value_ = "";
     GetTextNode().SetTextContent(value_.value());
   } else {
-    std::string str = HRValueUtils::GetString(params[0]);
+    auto& str = HRValueUtils::GetString(params[0]);
     value_ = str;
     GetTextNode().SetTextContent(value_.value());
     
@@ -595,6 +600,29 @@ void TextInputView::ClearProps() {
   returnKeyType_.reset();
   textAlign_.reset();
   textAlignVertical_.reset();
+}
+
+void TextInputView::CheckAndAddKeyboardListener() {
+  if (keyboardListenerKey_.length() == 0) {
+    keyboardListenerKey_ = std::to_string(ctx_->GetRootId()) + "_" + std::to_string(tag_);
+    HRKeyboardManager::GetInstance().AddKeyboardListener(keyboardListenerKey_, [ctx = ctx_, tag = tag_](float height) {
+      if (height > 0) {
+        HippyValueObjectType params;
+        params["keyboardHeight"] = HippyValue(HRPixelUtils::VpToDp(height));
+        const std::shared_ptr<HippyValue> obj = std::make_shared<HippyValue>(params);
+        HREventUtils::SendComponentEvent(ctx, tag, "keyboardWillShow", obj);
+      } else {
+        HREventUtils::SendComponentEvent(ctx, tag, "keyboardWillHide", nullptr);
+      }
+    });
+  }
+}
+
+void TextInputView::RemoveKeyboardListener() {
+  if (keyboardListenerKey_.length() > 0) {
+    HRKeyboardManager::GetInstance().RemoveKeyboardListener(keyboardListenerKey_);
+    keyboardListenerKey_.clear();
+  }
 }
 
 } // namespace native

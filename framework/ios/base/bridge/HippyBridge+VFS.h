@@ -1,8 +1,10 @@
-/*
+/*!
+ * iOS SDK
+ *
  * Tencent is pleased to support the open source community by making
  * Hippy available.
  *
- * Copyright (C) 2022 THL A29 Limited, a Tencent company.
+ * Copyright (C) 2019 THL A29 Limited, a Tencent company.
  * All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,14 +20,21 @@
  * limitations under the License.
  */
 
-export * from "./HippyBizViewBuilder"
-export * from "./HippyRootView"
-export * from "./HippyViewEvent"
-export * from "./NativeRender"
-export * from "./NativeRenderContext"
+#import "HippyBridge.h"
+#import "HippyVFSDefines.h"
 
-export * from "./components/base/HippyRenderBaseView"
-export * from "./components/custom/HippyCustomComponentView"
-export * from "./components/HippyRenderRegisterMap"
+NS_ASSUME_NONNULL_BEGIN
 
-export * from "./dom_node/HRNodeProps"
+@interface HippyBridge (VFS)
+
+/// Load content using VFS.
+/// This is a OC wrapper around `RequestUntrustedContent` that uses VFS to fetch the content.
+- (void)loadContentUsingVFS:(nonnull NSString *)urlString
+                  extraInfo:(nullable NSDictionary *)extraInfo
+             operationQueue:(nullable NSOperationQueue *)operationQueue
+                   progress:(nullable VFSHandlerProgressBlock)progress
+                 completion:(nonnull VFSHandlerCompletionBlock)completion;
+
+@end
+
+NS_ASSUME_NONNULL_END

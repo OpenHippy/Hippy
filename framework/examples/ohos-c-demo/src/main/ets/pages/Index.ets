@@ -24,47 +24,76 @@ import { EngineInitParams,
   HippyLibrary,
   HippyNativeModuleCreator, HippyRootViewWrapper,
   HippyValue,
-  HRRenderViewCreator } from 'hippy';
+  HRRenderViewCreator, EngineListener, ModuleListener, HippyJsException } from 'hippy';
 import { HippyAPIProvider } from 'hippy';
 import { createHippyEngine } from 'hippy';
 import { ModuleLoadParams } from 'hippy';
 import { ModuleLoadStatus } from 'hippy';
 import { EngineInitStatus } from 'hippy';
 import { HippyEngine } from 'hippy';
-import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LogUtils } from 'hippy/src/main/ets/support/utils/LogUtils'
 import { BizComponent } from './BizView';
 import HippyRenderBaseView
   from 'hippy/src/main/ets/renderer_native/components/base/HippyRenderBaseView';
 import demoNapi from 'libdemo.so';
+import { buildCustomRenderView, ExampleAPIProvider } from '../hippy_extend/ExampleAPIProvider';
 
-export class ExampleAPIProvider implements HippyAPIProvider {
-  getCustomNativeModuleCreatorMap(): Map<string, HippyNativeModuleCreator> | null {
-    return null
+class DefaultEngineListener implements EngineListener {
+  private hippyEngine: HippyEngine
+  private rootViewWrapper: HippyRootViewWrapper
+
+  constructor(hippyEngine: HippyEngine, rootViewWrapper: HippyRootViewWrapper) {
+    this.hippyEngine = hippyEngine
+    this.rootViewWrapper = rootViewWrapper
   }
 
-  getCustomJavaScriptModuleCreatorMap(): Map<string, HippyJSModuleCreator> | null {
-    return null
-  }
-
-  getCustomRenderViewCreatorMap(): Map<string, HRRenderViewCreator> | null {
-    return null
-  }
-
-  getCustomMeasureRenderViews(): Array<string> | null {
-    return null
-  }
-
-  getCustomMappingRenderViewMap(): Map<string, string> | null {
-    return null
-  }
-
-  getCustomFontPathMap(): Map<string, string> | null {
-    return null
+  onInitialized(statusCode: EngineInitStatus, msg: string): void {
+    LogUtils.i('hippy demo', 'initEngine status: ' + statusCode + ' msg:' + msg);
+    if (statusCode == EngineInitStatus.STATUS_OK) {
+      let loadParams = new ModuleLoadParams(
+        'vue2/index.ohos.js',
+        '',
+        '',
+        '',
+        null,
+        null,
+        null,
+      )
+      loadParams.componentName = "Demo"
+      loadParams.codeCacheTag = "Demo"
+      loadParams.jsParams = new Map<string, HippyValue>()
+      loadParams.jsParams.set(
+        "msgFromNative",
+        "Hi js developer, I come from ohos native code!"
+      )
+      loadParams.wrappedCustomRenderViewBuilder = wrapBuilder(buildCustomRenderView)
+      let moduleListener = new DefaultModuleListener()
+      let rootView = this.hippyEngine.loadModuleWithListener(loadParams, moduleListener)
+      if (rootView) {
+        this.rootViewWrapper.setRootView(rootView)
+      }
+      demoNapi.Demo_OnHippyRootViewReady();
+    }
   }
 }
 
-@Builder
-function buildCustomRenderView($$: HippyRenderBaseView) {
+class DefaultModuleListener implements ModuleListener {
+  onLoadCompleted(statusCode: ModuleLoadStatus, msg: string): void {
+    LogUtils.i('hippy demo', 'loadModule status: ' + statusCode + ' msg:' + msg);
+  }
+
+  onJsException(exception: HippyJsException): boolean {
+    LogUtils.e('hippy demo', 'loadModule onJsException: ' + exception);
+    return true;
+  }
+
+  onFirstViewAdded(): void {
+
+  }
+
+  onFirstContentfulPaint(): void {
+
+  }
 }
 
 @Entry
@@ -83,36 +112,11 @@ struct Index {
     params.coreJSAssetsPath = "vue2/vendor.ohos.js"
     params.enableArkCApi = true
     this.hippyEngine = createHippyEngine(params)
-    this.hippyEngine.initEngine((statusCode: EngineInitStatus, msg: string) => {
-      if (statusCode == EngineInitStatus.STATUS_OK) {
-        let loadParams = new ModuleLoadParams(
-          'vue2/index.ohos.js',
-          '',
-          '',
-          '',
-          null,
-          null,
-          null,
-        )
-        loadParams.componentName = "Demo"
-        loadParams.codeCacheTag = "Demo"
-        loadParams.jsParams = new Map<string, HippyValue>()
-        loadParams.jsParams.set(
-          "msgFromNative",
-          "Hi js developer, I come from ohos native code!"
-        )
-        loadParams.wrappedCustomRenderViewBuilder = wrapBuilder(buildCustomRenderView)
-        let rootView = this.hippyEngine?.loadModule(
-          loadParams,
-          (statusCode: ModuleLoadStatus, msg: string) => {
+    let engineListener = new DefaultEngineListener(this.hippyEngine, this.rootViewWrapper)
+    this.hippyEngine.initEngine(engineListener)
 
-          })
-        if (rootView) {
-          this.rootViewWrapper.setRootView(rootView)
-        }
-        demoNapi.Demo_OnHippyRootViewReady();
-      }
-    })
+    this.hippyEngine.setUIContext(this.getUIContext())
+    this.hippyEngine.setCustomWrappedRenderViewBuilderForCInterface(wrapBuilder(buildCustomRenderView))
   }
 
   build() {
@@ -123,6 +127,12 @@ struct Index {
         .width(300)
         .height(400)
         .border({width: 1, color: Color.Black})
+      Button('测试销毁')
+        .width(120)
+        .height(30)
+        .onClick((event) => {
+          demoNapi.Demo_TestDestroy();
+        })
     }
     .width('100%')
   }

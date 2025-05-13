@@ -41,6 +41,7 @@ import { HippyBridgeImpl } from './HippyBridgeImpl';
 import { HippyBridgeManager } from './HippyBridgeManager';
 import { HippyCallNativeParams } from './HippyCallNativeParams';
 import { util } from '@kit.ArkTS';
+import systemDateTime from '@ohos.systemDateTime';
 
 export enum BridgeState {
   UNINITIALIZED = 0,
@@ -75,11 +76,13 @@ export class HippyBridgeManagerImpl implements HippyBridgeManager, BridgeCallbac
   public mIsDevModule: boolean;
   public mDebugServerHost: string;
   public mGroupId: number;
+  public mInitStartTime: number = 0;
   public mThirdPartyAdapter: HippyThirdPartyAdapter | null;
   public mV8InitParams: V8InitParams | null;
   public mJsDriver: JsDriver;
   public mHippyBridge: HippyBridgeImpl;
   public mBridgeState: BridgeState = BridgeState.UNINITIALIZED;
+  public mLoadedBundleInfo: Set<string> | null = null;
   public libHippy: HippyLibrary;
 
   public constructor(
@@ -92,12 +95,15 @@ export class HippyBridgeManagerImpl implements HippyBridgeManager, BridgeCallbac
     groupId: number,
     thirdPartyAdapter: HippyThirdPartyAdapter | null,
     v8InitParams: V8InitParams | null,
-    jsDriver: JsDriver) {
+    jsDriver: JsDriver,
+    initStartTime: number
+  ) {
 
     this.mContext = context;
     this.libHippy = libHippy;
     this.mCoreBundleLoader = coreBundleLoader;
     this.mGroupId = groupId;
+    this.mInitStartTime = initStartTime;
     this.mThirdPartyAdapter = thirdPartyAdapter;
     this.mEnableV8Serialization = enableV8Serialization;
     this.mIsDevModule = isDevModule;
@@ -258,9 +264,11 @@ export class HippyBridgeManagerImpl implements HippyBridgeManager, BridgeCallbac
   }
 
   initJSBridgeCallback(result: number, reason: string, initBridgeCallback: NativeCallback): void {
-    LogUtils.i('hippy', 'jsDriver initialize callback, instanceId: %{public}d' + this.mJsDriver.instanceId);
-    if (result != 0) {
-      LogUtils.e('hippy', 'jsDriver initialize error, result: ' + result + ', reason: ' + reason);
+    LogUtils.i('hippy', 'init JSBridge callback, instanceId: %{public}d' + this.mJsDriver.instanceId);
+    if (result != 0 || this.mBridgeState == BridgeState.DESTROYED) {
+      LogUtils.e('hippy', 'init JSBridge callback error, result: ' + result + ', reason: ' + reason + ', bridge state: ' + this.mBridgeState);
+      this.reportException('init JSBridge callback error', '');
+      return;
     }
 
     if (this.mContext != null) {
@@ -273,6 +281,10 @@ export class HippyBridgeManagerImpl implements HippyBridgeManager, BridgeCallbac
     // if (mThirdPartyAdapter != null) {
     //   mThirdPartyAdapter.onRuntimeInit(runtimeId);
     // }
+
+    // performance
+    this.mJsDriver.onNativeInitEnd(this.mInitStartTime, systemDateTime.getTime());
+
     if (this.mCoreBundleLoader != null) {
       const timeMonitor = this.mContext.getMonitor();
       // add load vendor js perf log
@@ -306,9 +318,36 @@ export class HippyBridgeManagerImpl implements HippyBridgeManager, BridgeCallbac
     const timeMonitor = this.mContext.getMonitor();
     timeMonitor.beginGroup(TimeMonitor.MONITOR_GROUP_RUN_BUNDLE);
     timeMonitor.addPoint(TimeMonitor.MONITOR_GROUP_RUN_BUNDLE, TimeMonitor.MONITOR_POINT_LOAD_MAIN_JS);
-    loader.load(this.mHippyBridge, (result: number, reason: string) => {
-      this.runBundleCallback(result, reason);
-    });
+
+    if (this.mBridgeState != BridgeState.INITIALIZED) {
+      this.mContext.onLoadModuleCompleted(ModuleLoadStatus.STATUS_ENGINE_UNINIT, "load module error. bridge state: " + this.mBridgeState);
+      return;
+    }
+    if (loader == null) {
+      this.mContext.onLoadModuleCompleted(ModuleLoadStatus.STATUS_VARIABLE_NULL, "load module error. loader:" + null);
+      return;
+    }
+
+    let bundleUniKey = loader.getBundleUniKey();
+    if (this.mLoadedBundleInfo != null && bundleUniKey.length > 0 && this.mLoadedBundleInfo.has(bundleUniKey)) {
+      // If preload is invoked, this is normal.
+      this.mContext.onLoadModuleCompleted(ModuleLoadStatus.STATUS_REPEAT_LOAD, "repeat load module. loader.getBundleUniKey=" + bundleUniKey);
+      return;
+    }
+
+    if (bundleUniKey.length > 0) {
+      if (this.mLoadedBundleInfo == null) {
+        this.mLoadedBundleInfo = new Set();
+      }
+      this.mLoadedBundleInfo.add(bundleUniKey);
+
+      loader.load(this.mHippyBridge, (result: number, reason: string) => {
+        this.runBundleCallback(result, reason);
+      });
+    } else {
+      this.mContext.onLoadModuleCompleted(ModuleLoadStatus.STATUS_VARIABLE_NULL, "can not load module. loader.getBundleUniKey=null");
+      return;
+    }
   }
 
   runBundleCallback = (result: number, reason: string) => {
@@ -330,12 +369,11 @@ export class HippyBridgeManagerImpl implements HippyBridgeManager, BridgeCallbac
     let context = this.mContext.getGlobalConfigs().getContext();
     if (context == null) return ""
     let globalParams = new Map<string, HippyAny>()
-    let dimensionMap = await DimensionsUtil.getDimensions(-1, -1, context, true);
+    let dimensionMap = await DimensionsUtil.getDimensions(-1, -1, context);
     if (this.mContext.getGlobalConfigs() != null
       && this.mContext.getGlobalConfigs().getDeviceAdapter() != null) {
       this.mContext.getGlobalConfigs()
-        .getDeviceAdapter()?.reviseDimensionIfNeed(context, dimensionMap, false,
-        false);
+        .getDeviceAdapter()?.reviseDimensionIfNeed(context, dimensionMap);
     }
     DimensionsUtil.convertDimensionsToDp(dimensionMap);
     globalParams.set("Dimensions", dimensionMap)

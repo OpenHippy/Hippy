@@ -33,9 +33,14 @@ set(CMAKE_CXX_STANDARD 17)
 add_library(${PROJECT_NAME} STATIC)
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_compile_options(${PROJECT_NAME} PRIVATE ${COMPILE_OPTIONS})
-#target_compile_definitions(${PROJECT_NAME} PUBLIC "OHOS_DRAW_TEXT") # 默认关闭，因为OH_Drawing时主题字体还没有API支持。
 #target_compile_definitions(${PROJECT_NAME} INTERFACE "OHOS_NATIVE_RENDER")
 # endregion
+
+# 鸿蒙上文本组件绘制方案：
+# OHOS_DRAW_TEXT - 使用绘制好的文本赋给Text组件，默认关闭
+# OHOS_DRAW_CUSTOM_TEXT - 使用绘制好的文本赋给Custom组件，不使用Text组件，AI选词、长按、手势、无障碍等不能利用OH底座，默认关闭
+target_compile_definitions(${PROJECT_NAME} PUBLIC "OHOS_DRAW_TEXT")
+#target_compile_definitions(${PROJECT_NAME} PUBLIC "OHOS_DRAW_CUSTOM_TEXT")
 
 # region dom
 GlobalPackages_Add_dom()
@@ -65,23 +70,27 @@ set(SOURCE_SET
   src/uimanager/hr_manager.cc
   src/uimanager/hr_view_manager.cc
   src/uimanager/hr_gesture_dispatcher.cc
+  src/uimanager/hr_keyboard_manager.cc
   src/utils/hr_event_utils.cc
   src/utils/hr_convert_utils.cc
   src/utils/hr_pixel_utils.cc
   src/utils/hr_text_convert_utils.cc
   src/utils/hr_url_utils.cc
   src/utils/hr_display_sync_utils.cc
+  src/utils/hr_perf_utils.cc
   src/virtual/hr_virtual_view_manager.cc
   src/virtual/hr_virtual_view.cc
   src/arkui/arkui_node.cc
   src/arkui/arkui_node_registry.cc
   src/arkui/column_node.cc
+  src/arkui/custom_node.cc
   src/arkui/custom_ts_node.cc
   src/arkui/image_node.cc
   src/arkui/image_span_node.cc
   src/arkui/list_item_node.cc
   src/arkui/list_node.cc
   src/arkui/native_dialog_api.cc
+  src/arkui/native_gesture_api.cc
   src/arkui/native_node_api.cc
   src/arkui/refresh_node.cc
   src/arkui/row_node.cc
@@ -121,6 +130,8 @@ set(SOURCE_SET
   src/components/text_input_view.cc
   src/components/waterfall_item_view.cc
   src/components/waterfall_view.cc
+  src/components/waterfall_pull_footer_view.cc
+  src/components/waterfall_pull_header_view.cc
   src/recycle/recycle_view.cc
   src/text_measure/font_collection_manager.cc
   src/text_measure/text_measurer.cc

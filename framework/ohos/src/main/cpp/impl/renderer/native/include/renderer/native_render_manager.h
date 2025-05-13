@@ -69,7 +69,7 @@ class NativeRenderManager : public RenderManager, public std::enable_shared_from
                          std::set<std::string> &custom_views, std::set<std::string> &custom_measure_views, std::map<std::string, std::string> &mapping_views,
                          std::string &bundle_path, bool is_rawfile, const std::string &res_module_name);
   void SetBundlePath(const std::string &bundle_path);
-  void InitDensity(double density, double density_scale, double font_size_scale);
+  void InitDensity(double density, double density_scale, double font_size_scale, double font_weight_scale);
   void AddCustomFontPath(const std::string &fontFamilyName, const std::string &fontPath);
 
   void CreateRenderNode(std::weak_ptr<RootNode> root_node, std::vector<std::shared_ptr<DomNode>>&& nodes) override;
@@ -112,7 +112,7 @@ class NativeRenderManager : public RenderManager, public std::enable_shared_from
   void BindNativeRootToParent(ArkUI_NodeHandle parentNodeHandle, uint32_t root_id, uint32_t node_id);
   void UnbindNativeRootFromParent(uint32_t root_id, uint32_t node_id);
 
-  void DestroyRoot(uint32_t root_id);
+  void DestroyRoot(uint32_t root_id, bool is_c_inteface = false);
 
   void DoCallbackForCallCustomTsView(uint32_t root_id, uint32_t node_id, uint32_t callback_id, const HippyValue &result);
 

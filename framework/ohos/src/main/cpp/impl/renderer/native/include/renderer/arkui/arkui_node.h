@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <arkui/native_gesture.h>
 #include <arkui/native_node.h>
 #include <arkui/native_type.h>
 #include <memory>
@@ -43,6 +44,7 @@ class ArkUINodeDelegate {
 public:
   virtual ~ArkUINodeDelegate() = default;
   virtual void OnClick(const HRPosition &position) {}
+  virtual void OnLongClick(const HRPosition &position) {}
   virtual void OnTouch(int32_t actionType, const HRPosition &screenPosition) {}
   virtual void OnAppear() {}
   virtual void OnDisappear() {}
@@ -122,6 +124,8 @@ public:
   virtual uint32_t GetTotalChildCount() const;
   virtual HRPosition GetPostion() const;
   virtual HRPosition GetAbsolutePosition() const;
+  virtual HRSize GetLayoutSize() const;
+  virtual HRPosition GetLayoutPosition() const;
   virtual HRPosition GetLayoutPositionInScreen() const;
   virtual HRPosition GetLayoutPositionInWindow() const;
 
@@ -133,6 +137,8 @@ public:
   virtual ArkUI_NodeHandle GetChildAt(int32_t postion) const;
   void RegisterClickEvent();
   void UnregisterClickEvent();
+  void RegisterLongClickEvent();
+  void UnregisterLongClickEvent();
   void RegisterTouchEvent();
   void UnregisterTouchEvent();
   void RegisterAppearEvent();
@@ -221,9 +227,12 @@ protected:
   ArkUI_NodeHandle nodeHandle_;
   bool isReleaseHandle_ = true;
   
+  bool isSpanNode_ = false;
+  
   ArkUINodeDelegate *arkUINodeDelegate_ = nullptr;
 
-  bool hasClickEvent_ = false;
+  ArkUI_GestureRecognizer *tapGesture_ = nullptr;
+  ArkUI_GestureRecognizer *longPressGesture_ = nullptr;
   bool hasTouchEvent_ = false;
   bool hasAppearEvent_ = false;
   bool hasDisappearEvent_ = false;

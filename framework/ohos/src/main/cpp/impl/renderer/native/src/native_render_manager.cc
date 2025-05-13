@@ -49,7 +49,7 @@ constexpr char kProps[] = "props";
 constexpr char kDeleteProps[] = "deleteProps";
 constexpr char kFontStyle[] = "fontStyle";
 constexpr char kLetterSpacing[] = "letterSpacing";
-constexpr char kColor[] = "kColor";
+constexpr char kColor[] = "color";
 constexpr char kFontSize[] = "fontSize";
 constexpr char kFontFamily[] = "fontFamily";
 constexpr char kFontWeight[] = "fontWeight";
@@ -62,15 +62,9 @@ constexpr char kTextAlign[] = "textAlign";
 constexpr char kText[] = "text";
 constexpr char kEnableScale[] = "enableScale";
 constexpr char kNumberOfLines[] = "numberOfLines";
-
-#define MARK_DIRTY_PROPERTY(STYLES, FIND_STYLE, NODE) \
-  do {                                                \
-    FOOTSTONE_DCHECK(NODE != nullptr);                \
-    if (STYLES->find(FIND_STYLE) != STYLES->end()) {  \
-      NODE->MarkDirty();                              \
-      return;                                         \
-    }                                                 \
-  } while (0)
+#ifdef OHOS_DRAW_TEXT
+constexpr char kBackgroundColor[] = "backgroundColor";
+#endif
 
 namespace hippy {
 inline namespace render {
@@ -215,9 +209,10 @@ void NativeRenderManager::SetBundlePath(const std::string &bundle_path) {
   }
 }
 
-void NativeRenderManager::InitDensity(double density, double density_scale, double font_size_scale) {
+void NativeRenderManager::InitDensity(double density, double density_scale, double font_size_scale, double font_weight_scale) {
   density_ = static_cast<float>(density);
-  HRPixelUtils::InitDensity(density, density_scale, font_size_scale);
+  font_weight_scale_ = static_cast<float>(font_weight_scale);
+  HRPixelUtils::InitDensity(density, density_scale, font_size_scale, font_weight_scale);
 }
 
 void NativeRenderManager::AddCustomFontPath(const std::string &fontFamilyName, const std::string &fontPath) {
@@ -363,7 +358,7 @@ void NativeRenderManager::CreateRenderNode_C(std::weak_ptr<RootNode> root_node, 
     if (n->GetViewName() == "Text") {
       auto textNode = GetAncestorTextNode(node);
       auto cache = draw_text_node_manager_->GetCache(root->GetId());
-      cache->draw_text_nodes_[textNode->GetId()] = textNode;
+      cache->draw_text_nodes_[textNode->GetId()] = std::make_pair(0, textNode);
     }
   }
 #endif
@@ -391,13 +386,6 @@ void NativeRenderManager::CreateRenderNode_C(std::weak_ptr<RootNode> root_node, 
         if (!self) {
           return LayoutSize{0, 0};
         }
-#ifdef OHOS_DRAW_TEXT
-        auto node = weak_node.lock();
-        if (node) {
-          auto cache = self->draw_text_node_manager_->GetCache(root_node.lock()->GetId());
-          cache->draw_text_nodes_.erase(node->GetId());
-        }
-#endif
         int64_t result;
         self->DoMeasureText(root_node, weak_node, self->DpToPx(width), static_cast<int32_t>(width_measure_mode),
                             self->DpToPx(height), static_cast<int32_t>(height_measure_mode), result);
@@ -459,6 +447,9 @@ void NativeRenderManager::CreateRenderNode_C(std::weak_ptr<RootNode> root_node, 
         }
         m->props_ = mergedProps;
       }
+    }
+    if (parentNode && parentNode->GetViewName() == "WaterfallView") {
+      m->is_parent_waterfall_ = true;
     }
     mutations[i] = m;
 
@@ -785,6 +776,20 @@ void NativeRenderManager::UpdateLayout_C(std::weak_ptr<RootNode> root_node, cons
       m->padding_bottom_ = HRPixelUtils::DpToVp(result.paddingBottom);
     }
     mutations[i] = m;
+#ifdef OHOS_DRAW_TEXT
+    auto node = nodes[i];
+    if (node->GetViewName() == "Text") {
+      auto cache = draw_text_node_manager_->GetCache(root->GetId());
+      auto it = cache->draw_text_nodes_.find(node->GetId());
+      if (it != cache->draw_text_nodes_.end()) {
+        if (result.width > 0 && result.width != it->second.first) {
+          int64_t ret = 0;
+          DoMeasureText(root_node, node, DpToPx(result.width), static_cast<int32_t>(LayoutMeasureMode::AtMost),
+                        DpToPx(result.height), static_cast<int32_t>(LayoutMeasureMode::AtMost), ret);
+        }
+      }
+    }
+#endif
   }
   
   c_render_provider_->UpdateLayout(root_id, mutations);
@@ -852,20 +857,6 @@ void NativeRenderManager::EndBatch_C(std::weak_ptr<RootNode> root_node) {
   auto root = root_node.lock();
   if (root) {
 #ifdef OHOS_DRAW_TEXT
-    auto cache = draw_text_node_manager_->GetCache(root->GetId());
-    for (auto it : cache->draw_text_nodes_) {
-      auto node = it.second.lock();
-      if (node) {
-        float width = 0;
-        float height = 0;
-        if (GetTextNodeSizeProp(node, width, height)) {
-          int64_t result = 0;
-          DoMeasureText(root_node, node, DpToPx(width), static_cast<int32_t>(LayoutMeasureMode::AtMost),
-                        DpToPx(height), static_cast<int32_t>(LayoutMeasureMode::AtMost), result);
-        }
-      }
-    }
-    cache->draw_text_nodes_.clear();
     // when density changed
     if (HRPixelUtils::GetDensity() != density_) {
       auto textNodes = root->GetAllTextNodes();
@@ -923,6 +914,21 @@ bool NativeRenderManager::GetTextNodeSizeProp(const std::shared_ptr<DomNode> &no
 }
 
 void NativeRenderManager::BeforeLayout(std::weak_ptr<RootNode> root_node) {
+  if (HRPixelUtils::GetFontWeightScale() != font_weight_scale_) {
+    auto root = root_node.lock();
+    if (root) {
+      auto textNodes = root->GetAllTextNodes();
+      for (auto it = textNodes.begin(); it != textNodes.end(); it++) {
+        auto node = it->lock();
+        if (node) {
+          if (node->GetViewName() == "Text") {
+            node->GetLayoutNode()->MarkDirty();
+          }
+        }
+      }
+    }
+    font_weight_scale_ = HRPixelUtils::GetFontWeightScale();
+  }
 #ifdef OHOS_DRAW_TEXT
   if (HRPixelUtils::GetDensity() != density_) {
     auto root = root_node.lock();
@@ -1143,8 +1149,8 @@ void NativeRenderManager::DoMeasureText(const std::weak_ptr<RootNode> root_node,
   std::set<std::string> fontFamilyNames;
   auto text_prop_it = textPropMap.find("fontFamily");
   if (text_prop_it != textPropMap.end()) {
-    std::string fontName;
-    if (text_prop_it->second.ToString(fontName) && fontName.size() > 0) {
+    auto& fontName = text_prop_it->second.ToStringSafe();
+    if (fontName.size() > 0) {
       fontFamilyNames.insert(fontName);
     }
   }
@@ -1217,6 +1223,8 @@ void NativeRenderManager::DoMeasureText(const std::weak_ptr<RootNode> root_node,
 
 #ifdef OHOS_DRAW_TEXT
   if (enable_ark_c_api_) {
+    auto cache = draw_text_node_manager_->GetCache(root->GetId());
+    cache->draw_text_nodes_[node->GetId()] = std::make_pair(width, node);
     c_render_provider_->UpdateTextMeasurer(root->GetId(), node->GetId(), measureInst);
   }
 #endif
@@ -1347,26 +1355,33 @@ void NativeRenderManager::MarkTextDirty(std::weak_ptr<RootNode> weak_root_node, 
     if (node) {
       auto diff_style = node->GetDiffStyle();
       if (diff_style) {
-        MARK_DIRTY_PROPERTY(diff_style, kFontStyle, node->GetLayoutNode());
-        MARK_DIRTY_PROPERTY(diff_style, kLetterSpacing, node->GetLayoutNode());
-        MARK_DIRTY_PROPERTY(diff_style, kColor, node->GetLayoutNode());
-        MARK_DIRTY_PROPERTY(diff_style, kFontSize, node->GetLayoutNode());
-        MARK_DIRTY_PROPERTY(diff_style, kFontFamily, node->GetLayoutNode());
-        MARK_DIRTY_PROPERTY(diff_style, kFontWeight, node->GetLayoutNode());
-        MARK_DIRTY_PROPERTY(diff_style, kTextDecorationLine, node->GetLayoutNode());
-        MARK_DIRTY_PROPERTY(diff_style, kTextShadowOffset, node->GetLayoutNode());
-        MARK_DIRTY_PROPERTY(diff_style, kTextShadowRadius, node->GetLayoutNode());
-        MARK_DIRTY_PROPERTY(diff_style, kTextShadowColor, node->GetLayoutNode());
-        MARK_DIRTY_PROPERTY(diff_style, kLineHeight, node->GetLayoutNode());
-        MARK_DIRTY_PROPERTY(diff_style, kTextAlign, node->GetLayoutNode());
-        MARK_DIRTY_PROPERTY(diff_style, kText, node->GetLayoutNode());
-        MARK_DIRTY_PROPERTY(diff_style, kEnableScale, node->GetLayoutNode());
-        MARK_DIRTY_PROPERTY(diff_style, kNumberOfLines, node->GetLayoutNode());
+        FOOTSTONE_DCHECK(node->GetLayoutNode() != nullptr);
+        if (diff_style->find(kFontStyle) != diff_style->end()
+          || diff_style->find(kLetterSpacing) != diff_style->end()
+          || diff_style->find(kColor) != diff_style->end()
+#ifdef OHOS_DRAW_TEXT
+          || diff_style->find(kBackgroundColor) != diff_style->end()
+#endif
+          || diff_style->find(kFontSize) != diff_style->end()
+          || diff_style->find(kFontFamily) != diff_style->end()
+          || diff_style->find(kFontWeight) != diff_style->end()
+          || diff_style->find(kTextDecorationLine) != diff_style->end()
+          || diff_style->find(kTextShadowOffset) != diff_style->end()
+          || diff_style->find(kTextShadowRadius) != diff_style->end()
+          || diff_style->find(kTextShadowColor) != diff_style->end()
+          || diff_style->find(kLineHeight) != diff_style->end()
+          || diff_style->find(kTextAlign) != diff_style->end()
+          || diff_style->find(kText) != diff_style->end()
+          || diff_style->find(kEnableScale) != diff_style->end()
+          || diff_style->find(kNumberOfLines) != diff_style->end()) {
+          node->GetLayoutNode()->MarkDirty();
+        }
         
 #ifdef OHOS_DRAW_TEXT
         if (diff_style->find(kFontStyle) != diff_style->end()
           || diff_style->find(kLetterSpacing) != diff_style->end()
           || diff_style->find(kColor) != diff_style->end()
+          || diff_style->find(kBackgroundColor) != diff_style->end()
           || diff_style->find(kFontSize) != diff_style->end()
           || diff_style->find(kFontFamily) != diff_style->end()
           || diff_style->find(kFontWeight) != diff_style->end()
@@ -1381,7 +1396,7 @@ void NativeRenderManager::MarkTextDirty(std::weak_ptr<RootNode> weak_root_node, 
           || diff_style->find(kNumberOfLines) != diff_style->end()) {
           auto textNode = GetAncestorTextNode(node);
           auto cache = draw_text_node_manager_->GetCache(root_node->GetId());
-          cache->draw_text_nodes_[textNode->GetId()] = textNode;
+          cache->draw_text_nodes_[textNode->GetId()] = std::make_pair(0, textNode);
         }
 #endif
       }
@@ -1438,9 +1453,9 @@ void NativeRenderManager::UnbindNativeRootFromParent(uint32_t root_id, uint32_t 
   }
 }
 
-void NativeRenderManager::DestroyRoot(uint32_t root_id) {
+void NativeRenderManager::DestroyRoot(uint32_t root_id, bool is_c_inteface) {
   if (enable_ark_c_api_) {
-    c_render_provider_->DestroyRoot(root_id);
+    c_render_provider_->DestroyRoot(root_id, is_c_inteface);
   }
   font_collection_manager_->RemoveCache(root_id);
 }

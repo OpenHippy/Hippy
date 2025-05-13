@@ -18,7 +18,7 @@
  * limitations under the License.
  */
 import window from '@ohos.window';
-import { HippyEngine, HippyLayoutEngineType } from '../hippy_framework';
+import { HippyEngine, HippyLayoutEngineType } from '../hippy_framework/HippyEngine';
 import { HippyException } from '../support/common/HippyException';
 import { HippyRecord } from '../support/common/HippyTypes';
 import { LogUtils } from '../support/utils/LogUtils';
@@ -64,6 +64,8 @@ export class HippyRootView {
 
   private initRenderView() {
     this.renderView = new HippyRenderView(this.ctx, this.pagerName, this.pagerData, this.renderViewSize)
+    let renderManger = this.ctx.getNativeRender().getRenderManager()
+    renderManger.initViewManager(this.renderView)
     this.performAllRenderViewTasks()
   }
 

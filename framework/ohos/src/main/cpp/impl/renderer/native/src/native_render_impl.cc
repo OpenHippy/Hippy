@@ -81,7 +81,13 @@ void NativeRenderImpl::RegisterCustomTsRenderViews(napi_env ts_env, napi_ref ts_
   hr_manager_->RegisterCustomTsRenderViews(ts_env, ts_render_provider_ref, custom_views, mapping_views);
 }
 
-void NativeRenderImpl::DestroyRoot(uint32_t root_id) {
+void NativeRenderImpl::DestroyRoot(uint32_t root_id, bool is_c_inteface) {
+  if (is_c_inteface) {
+    auto view_manager = hr_manager_->GetViewManager(root_id);
+    if (view_manager) {
+      view_manager->CheckAndDestroyTsRootForCInterface();
+    }
+  }
   hr_manager_->RemoveViewManager(root_id);
   hr_manager_->RemoveVirtualNodeManager(root_id);
 }
@@ -115,7 +121,7 @@ void NativeRenderImpl::PreCreateNode(uint32_t root_id, const std::vector<std::sh
 
   for (uint32_t i = 0; i < mutations.size(); i++) {
     auto &m = mutations[i];
-    view_manager->PreCreateRenderView(m->tag_, m->view_name_, m->is_parent_text_);
+    view_manager->PreCreateRenderView(m->tag_, m->view_name_, m->is_parent_text_, m->is_parent_waterfall_);
     view_manager->PreUpdateProps(m->tag_, m->props_);
   }
 }

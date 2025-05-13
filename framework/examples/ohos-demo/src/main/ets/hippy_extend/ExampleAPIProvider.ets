@@ -21,7 +21,7 @@ import { HippyAPIProvider } from 'hippy'
 import {
   HippyJSModuleCreator,
   HippyNativeModuleCreator } from 'hippy/src/main/ets/hippy_framework/modules/HippyModuleManagerImpl'
-import { HippyNativeModuleBase } from 'hippy/src/main/ets/hippy_framework/modules/native'
+import { HippyNativeModuleBase } from 'hippy/src/main/ets/hippy_framework/modules/native/HippyNativeModuleBase'
 import HippyRenderBaseView
   from 'hippy/src/main/ets/renderer_native/components/base/HippyRenderBaseView'
 import {
@@ -57,14 +57,6 @@ export class ExampleAPIProvider implements HippyAPIProvider {
 
   getCustomMappingRenderViewMap(): Map<string, string> | null {
     return null
-  }
-
-  // 注册字体路径至hippy测量函数
-  getCustomFontPathMap(): Map<string, string> | null {
-    let map = new Map<string, string>();
-    // 暂时hardcode路径在此，生产环境应通过Context属性获取字体文件路径
-    map.set("TTTGB", "/data/storage/el1/bundle/entry/resources/resfile/fonts/TTTGB.otf");
-    return map
   }
 
 }
