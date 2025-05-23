@@ -334,6 +334,11 @@ void fatalHandler(const std::string &message) {
 
 constexpr char kHippyHermes[] = "HippyHermesBridge";
 HermesCtx::HermesCtx() {
+  bool shouldEnableSampleProfiling = false;
+#ifdef ENABLE_INSPECTOR
+  shouldEnableSampleProfiling = true;
+#endif
+  
   auto runtimeConfigBuilder = ::hermes::vm::RuntimeConfig::Builder()
     .withGCConfig(::hermes::vm::GCConfig::Builder()
                   // Default to 3GB
@@ -346,8 +351,8 @@ HermesCtx::HermesCtx() {
                   //.withAllocInYoung(false)
                   //.withRevertToYGAtTTI(true)
                   .build())
-    .withEnableSampleProfiling(true)
-    //.withES6Class(true)
+    .withEnableSampleProfiling(shouldEnableSampleProfiling)
+    .withES6Class(true)
     .withES6Proxy(true)
     .withES6Promise(false)
     .withMicrotaskQueue(true);
@@ -1044,7 +1049,7 @@ bool HermesCtx::GetByteBuffer(const std::shared_ptr<CtxValue>& value,
   // Assume that type has already been checked using IsByteBuffer for performance.
   auto ctx_value = std::static_pointer_cast<HermesCtxValue>(value);
   const auto &jsi_value = ctx_value->GetValue(runtime_);
-  auto arrayBuffer = jsi_value.getObject(*runtime_).getArrayBuffer(*runtime_);;
+  auto arrayBuffer = jsi_value.getObject(*runtime_).getArrayBuffer(*runtime_);
 
   // Extract data and length
   *out_data = arrayBuffer.data(*runtime_);
