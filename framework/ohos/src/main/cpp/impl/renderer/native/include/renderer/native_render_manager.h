@@ -123,6 +123,10 @@ class NativeRenderManager : public RenderManager, public std::enable_shared_from
   HRRect GetViewFrameInRoot(uint32_t root_id, uint32_t node_id);
   void AddBizViewInRoot(uint32_t root_id, uint32_t biz_view_id, ArkUI_NodeHandle node_handle, const HRPosition &position);
   void RemoveBizViewInRoot(uint32_t root_id, uint32_t biz_view_id);
+  
+  void SetImageLoaderAdapter(napi_ref local_loader, napi_ref remote_loader);
+  void DoCallbackForFetchLocalPathAsync(uint32_t root_id, uint32_t node_id, bool success, const std::string &path);
+  
   std::shared_ptr<NativeRenderProvider> &GetNativeRenderProvider() { return c_render_provider_; }
 
 private:
@@ -144,7 +148,7 @@ private:
 
   void DoMeasureText(const std::weak_ptr<RootNode> root_node, const std::weak_ptr<hippy::dom::DomNode> dom_node,
                      const float width, const int32_t width_mode,
-                     const float height, const int32_t height_mode, int64_t &result);
+                     const float height, const int32_t height_mode, bool isSizeIncludePadding, int64_t &result);
 
   bool IsCustomMeasureNode(const std::string &name);
   bool IsCustomMeasureCNode(const std::string &name);

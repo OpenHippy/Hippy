@@ -33,6 +33,8 @@ export * from "./src/main/ets/hippy_framework/adapter/http/HippyHttpAdapter"
 export * from "./src/main/ets/hippy_framework/adapter/http/HippyHttpHeader"
 export * from "./src/main/ets/hippy_framework/adapter/http/HippyHttpRequest"
 export * from "./src/main/ets/hippy_framework/adapter/http/HippyHttpResponse"
+export * from "./src/main/ets/hippy_framework/adapter/image/HippyImageLocalLoaderAdapter"
+export * from "./src/main/ets/hippy_framework/adapter/image/HippyImageRemoteLoaderAdapter"
 export * from "./src/main/ets/hippy_framework/adapter/log/HippyLogAdapter"
 export * from "./src/main/ets/hippy_framework/adapter/monitor/HippyEngineMonitorAdapter"
 export * from "./src/main/ets/hippy_framework/adapter/soloader/HippySoLoaderAdapter"
@@ -60,6 +62,11 @@ export * from "./src/main/ets/hippy_framework/modules/native/network/NetworkModu
 export * from "./src/main/ets/hippy_framework/modules/native/network/WebSocketModule"
 export * from "./src/main/ets/hippy_framework/modules/native/utils/UtilsModule"
 export * from "./src/main/ets/hippy_framework/modules/HippyModuleManagerImpl"
+
+export * from "./src/main/ets/hippy_framework/worker_modules/HippyWModuleManagerImpl"
+export * from "./src/main/ets/hippy_framework/worker_modules/native/HippyWModuleBase"
+export * from "./src/main/ets/hippy_framework/worker_modules/worker/HippyModuleWorkerHelper"
+export * from "./src/main/ets/hippy_framework/worker_modules/worker_manager/HippyModuleWorkerManager"
 
 export * from "./src/main/ets/hippy_library/HippyLibrary"
 

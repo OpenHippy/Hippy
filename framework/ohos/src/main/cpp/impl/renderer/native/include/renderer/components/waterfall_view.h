@@ -88,6 +88,7 @@ public:
 private:
 
   void HandleOnChildrenUpdated();
+  void CreateArkUINodeAfterHeaderCheck();
   
   void EmitScrollEvent(const std::string &eventName);
   void CheckSendOnScrollEvent();
@@ -112,6 +113,10 @@ private:
   std::shared_ptr<WaterfallItemAdapter> adapter_;
   
   ArkUI_WaterFlowSectionOption *sectionOption_ = nullptr;
+  
+  ArkUI_ScrollNestedMode scrollForward_ = ARKUI_SCROLL_NESTED_MODE_SELF_FIRST;
+  ArkUI_ScrollNestedMode scrollBackward_ = ARKUI_SCROLL_NESTED_MODE_SELF_FIRST;
+  bool toSetScrollNestedMode_ = false;
 
   float_t scrollEventThrottle_ = 30.0;
   int32_t preloadItemNumber_ = 0;
@@ -124,6 +129,8 @@ private:
   int64_t lastScrollTime_ = 0;
   
   bool hasPullHeader_ = false;
+  
+  bool hasCreateAfterHeaderCheck_ = false;
 
   uint64_t end_batch_callback_id_;
   std::shared_ptr<WaterfallPullHeaderView> headerView_ = nullptr;

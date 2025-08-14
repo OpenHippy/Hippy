@@ -31,7 +31,10 @@
 #include "renderer/components/custom_ts_view.h"
 #include "renderer/components/custom_view.h"
 #include "renderer/components/hippy_render_view_creator.h"
+#include "renderer/components/image_base_view.h"
+#include "renderer/components/image_view.h"
 #include "renderer/components/modal_view.h"
+#include "renderer/components/rich_text_image_span_view.h"
 #include "renderer/components/rich_text_view.h"
 #include "renderer/dom_node/hr_node_props.h"
 #include "renderer/native_render_context.h"
@@ -570,6 +573,19 @@ void HRViewManager::RemoveBizViewInRoot(uint32_t biz_view_id) {
   }
 }
 
+void HRViewManager::DoCallbackForFetchLocalPathAsync(uint32_t node_id, bool success, const std::string &path) {
+  auto view = FindRenderView(node_id);
+  if (view == nullptr) {
+    return;
+  }
+  if (view->GetViewType() == "Image") {
+    auto imageBaseView = std::static_pointer_cast<ImageBaseView>(view);
+    if (imageBaseView) {
+      imageBaseView->OnFetchLocalPathAsyncResult(success, path);
+    }
+  }
+}
+
 bool HRViewManager::IsCustomTsRenderView(std::string &view_name) {
   // custom ts view or WebView (no c-api for WebView)
   return custom_ts_render_views_.find(view_name) != custom_ts_render_views_.end() || view_name == "WebView";
@@ -676,7 +692,8 @@ void HRViewManager::UpdateCustomTsProps(std::shared_ptr<BaseView> &view, const H
     if (props.size() > 0) {
       for (auto prop_it = props.begin(); prop_it != props.end(); prop_it++) {
         auto &key = prop_it->first;
-        if (key == HRNodeProps::VISIBILITY || key == HRNodeProps::TRANSFORM || key == HRNodeProps::OVERFLOW) {
+        if (key == HRNodeProps::VISIBILITY || key == HRNodeProps::TRANSFORM || key == HRNodeProps::OVERFLOW ||
+            key == "native-scroll-ohos") {
           customTsView->SetProp(key, prop_it->second);
         }
       }

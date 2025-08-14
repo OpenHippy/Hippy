@@ -21,7 +21,8 @@
  */
 
 #include "renderer/components/image_view.h"
-#include "renderer/dom_node/hr_node_props.h"
+#include "oh_napi/ark_ts.h"
+#include "oh_napi/oh_napi_object.h"
 #include "renderer/utils/hr_event_utils.h"
 #include "renderer/utils/hr_url_utils.h"
 #include "renderer/utils/hr_value_utils.h"
@@ -31,7 +32,7 @@ namespace hippy {
 inline namespace render {
 inline namespace native {
 
-ImageView::ImageView(std::shared_ptr<NativeRenderContext> &ctx) : BaseView(ctx) {
+ImageView::ImageView(std::shared_ptr<NativeRenderContext> &ctx) : ImageBaseView(ctx) {
 }
 
 ImageView::~ImageView() {}
@@ -114,12 +115,13 @@ bool ImageView::SetPropImpl(const std::string &propKey, const HippyValue &propVa
     return true;
   } else if (propKey == "capInsets") {
     HippyValueObjectType m;
-    if (propValue.ToObject(m)) {
+    if (propValue.IsObject() && propValue.ToObject(m)) {
       auto left = HRValueUtils::GetFloat(m["left"]);
       auto top = HRValueUtils::GetFloat(m["top"]);
       auto right = HRValueUtils::GetFloat(m["right"]);
       auto bottom = HRValueUtils::GetFloat(m["bottom"]);
-      GetLocalRootArkUINode()->SetResizeable(left, top, right, bottom);
+      GetLocalRootArkUINode()->SetResizeable(HRPixelUtils::PxToDp(left), HRPixelUtils::PxToDp(top),
+        HRPixelUtils::PxToDp(right), HRPixelUtils::PxToDp(bottom));
     } else {
       return false;
     }
@@ -135,22 +137,6 @@ bool ImageView::SetPropImpl(const std::string &propKey, const HippyValue &propVa
 
 void ImageView::UpdateRenderViewFrameImpl(const HRRect &frame, const HRPadding &padding) {
   BaseView::UpdateRenderViewFrameImpl(frame, padding);
-}
-
-void ImageView::FetchAltImage(const std::string &imageUrl) {
-  if (imageUrl.size() > 0) {
-    auto bundlePath = ctx_->GetNativeRender().lock()->GetBundlePath();
-    auto url = HRUrlUtils::ConvertImageUrl(bundlePath, ctx_->IsRawFile(), ctx_->GetResModuleName(), imageUrl);
-    GetLocalRootArkUINode()->SetAlt(url);
-  }
-}
-
-void ImageView::FetchImage(const std::string &imageUrl) {
-  if (imageUrl.size() > 0) {
-    auto bundlePath = ctx_->GetNativeRender().lock()->GetBundlePath();
-    auto url = HRUrlUtils::ConvertImageUrl(bundlePath, ctx_->IsRawFile(), ctx_->GetResModuleName(), imageUrl);
-    GetLocalRootArkUINode()->SetSources(url);
-	}
 }
 
 void ImageView::OnComplete(float width, float height) {
@@ -177,6 +163,16 @@ void ImageView::OnError(int32_t errorCode) {
 
 void ImageView::ClearProps() {
   src_.clear();
+}
+
+void ImageView::SetSourcesOrAlt(const std::string &imageUrl, bool isSources) {
+  auto bundlePath = ctx_->GetNativeRender().lock()->GetBundlePath();
+  auto url = HRUrlUtils::ConvertImageUrl(bundlePath, ctx_->IsRawFile(), ctx_->GetResModuleName(), imageUrl);
+  if (isSources) {
+    GetLocalRootArkUINode()->SetSources(url);
+  } else {
+    GetLocalRootArkUINode()->SetAlt(url);
+  }
 }
 
 } // namespace native

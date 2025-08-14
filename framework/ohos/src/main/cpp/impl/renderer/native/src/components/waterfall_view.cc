@@ -22,6 +22,8 @@
 
 #include "renderer/components/waterfall_view.h"
 #include "renderer/components/rich_text_view.h"
+#include "renderer/dom_node/hr_node_props.h"
+#include "renderer/utils/hr_convert_utils.h"
 #include "renderer/utils/hr_pixel_utils.h"
 #include "renderer/utils/hr_value_utils.h"
 #include "renderer/native_render_provider.h"
@@ -38,6 +40,7 @@ WaterfallView::WaterfallView(std::shared_ptr<NativeRenderContext> &ctx) : BaseVi
 WaterfallView::~WaterfallView() {
   ctx_->GetNativeRender().lock()->RemoveEndBatchCallback(ctx_->GetRootId(), end_batch_callback_id_);
   if (flowNode_) {
+    flowNode_->SetArkUINodeDelegate(nullptr);
     flowNode_->ResetLazyAdapter();
   }
   if (adapter_) {
@@ -65,7 +68,7 @@ void WaterfallView::CreateArkUINodeImpl() {
   flowNode_->SetSizePercent(HRSize(1.f, 1.f));
   flowNode_->SetScrollBarDisplayMode(ARKUI_SCROLL_BAR_DISPLAY_MODE_OFF);
   flowNode_->SetCachedCount(4);
-  flowNode_->SetNestedScroll(ARKUI_SCROLL_NESTED_MODE_SELF_FIRST, ARKUI_SCROLL_NESTED_MODE_SELF_FIRST);
+  flowNode_->SetScrollNestedScroll(ARKUI_SCROLL_NESTED_MODE_SELF_FIRST, ARKUI_SCROLL_NESTED_MODE_SELF_FIRST);
   flowNode_->SetScrollEdgeEffect(ARKUI_EDGE_EFFECT_NONE);
 
   refreshNode_ = std::make_shared<RefreshNode>();
@@ -74,9 +77,15 @@ void WaterfallView::CreateArkUINodeImpl() {
   refreshNode_->SetRefreshRefreshing(false);
   refreshNode_->SetRefreshPullDownRatio(0);
   refreshNode_->AddChild(flowNode_.get());
+  
+  if (children_.size() > 0) {
+    CreateArkUINodeAfterHeaderCheck();
+  }
 }
 
 void WaterfallView::DestroyArkUINodeImpl() {
+  hasCreateAfterHeaderCheck_ = false;
+  
   flowNode_->SetArkUINodeDelegate(nullptr);
   flowNode_->SetNodeDelegate(nullptr);
   flowNode_->ResetLazyAdapter();
@@ -90,7 +99,29 @@ void WaterfallView::DestroyArkUINodeImpl() {
 }
 
 bool WaterfallView::SetPropImpl(const std::string &propKey, const HippyValue &propValue) {
-  if (propKey == "bounces") {
+  if (propKey == HRNodeProps::PROP_PRIORITY) {
+    auto mode = HRConvertUtils::ScrollNestedModeToArk(propValue);
+    scrollForward_ = mode;
+    scrollBackward_ = mode;
+    toSetScrollNestedMode_ = true;
+    return true;
+  } else if (propKey == HRNodeProps::PROP_LEFT_PRIORITY) {
+    scrollForward_ = HRConvertUtils::ScrollNestedModeToArk(propValue);
+    toSetScrollNestedMode_ = true;
+    return true;
+  } else if (propKey == HRNodeProps::PROP_TOP_PRIORITY) {
+    scrollForward_ = HRConvertUtils::ScrollNestedModeToArk(propValue);
+    toSetScrollNestedMode_ = true;
+    return true;
+  } else if (propKey == HRNodeProps::PROP_RIGHT_PRIORITY) {
+    scrollBackward_ = HRConvertUtils::ScrollNestedModeToArk(propValue);
+    toSetScrollNestedMode_ = true;
+    return true;
+  } else if (propKey == HRNodeProps::PROP_BOTTOM_PRIORITY) {
+    scrollBackward_ = HRConvertUtils::ScrollNestedModeToArk(propValue);
+    toSetScrollNestedMode_ = true;
+    return true;
+  } else if (propKey == "bounces") {
     auto flag = HRValueUtils::GetBool(propValue, false);
     if (flag) {
       flowNode_->SetScrollEdgeEffect(ARKUI_EDGE_EFFECT_SPRING);
@@ -151,6 +182,10 @@ void WaterfallView::OnSetPropsEndImpl() {
     toUpdateSection_ = false;
     UpdateSectionOption();
   }
+  if (toSetScrollNestedMode_) {
+    toSetScrollNestedMode_ = false;
+    flowNode_->SetScrollNestedScroll(scrollForward_, scrollBackward_);
+  }
   return BaseView::OnSetPropsEndImpl();
 }
 
@@ -172,16 +207,20 @@ void WaterfallView::HandleOnChildrenUpdated() {
   if (childrenCount > 0) {
     auto firstChild = std::static_pointer_cast<WaterfallItemView>(children_[0]);
     if (firstChild->GetViewType() == PULL_HEADER_VIEW_TYPE) {
-      headerView_ = std::static_pointer_cast<WaterfallPullHeaderView>(firstChild);
-      hasPullHeader_ = true;
-      
-      headerView_->CreateArkUINode(true, 0);
-      auto refreshOffset = headerView_->GetHeight();
-      headerView_->SetPosition({0, - refreshOffset});
-      
-      refreshNode_->SetRefreshPullDownRatio(1);
-      refreshNode_->SetRefreshContent(headerView_->GetLocalRootArkUINode()->GetArkUINodeHandle());
-      refreshNode_->SetRefreshOffset(refreshOffset);
+      auto newHeaderView = std::static_pointer_cast<WaterfallPullHeaderView>(firstChild);
+      if (newHeaderView != headerView_) { // 不宜重复设置headerView的position，否则会闪
+        headerView_ = newHeaderView;
+        hasPullHeader_ = true;
+        
+        headerView_->CreateArkUINode(true, 0);
+        auto refreshOffset = headerView_->GetHeight();
+        headerView_->SetPosition({0, - refreshOffset});
+        
+        if (refreshNode_) {
+          refreshNode_->SetRefreshContent(headerView_->GetLocalRootArkUINode()->GetArkUINodeHandle());
+          refreshNode_->SetRefreshOffset(refreshOffset);
+        }
+      }
       
       if (childrenCount > 1) {
         auto theChild = std::static_pointer_cast<WaterfallItemView>(children_[1]);
@@ -205,10 +244,34 @@ void WaterfallView::HandleOnChildrenUpdated() {
     } else if (lastChild->GetType() == WaterfallItemView::FOOT_BANNER_TYPE) {
       footBannerView_ = lastChild;
     }
+    
+    if (GetLocalRootArkUINode()) {
+      CreateArkUINodeAfterHeaderCheck();
+    }
   }
   
   UpdateSectionOption();
+}
+
+void WaterfallView::CreateArkUINodeAfterHeaderCheck() {
+  if (hasCreateAfterHeaderCheck_) {
+    return;
+  }
+  hasCreateAfterHeaderCheck_ = true;
   
+  if (hasPullHeader_) {
+    refreshNode_->SetRefreshPullDownRatio(1);
+    // 当Waterfall嵌套在lazyItem里时，可能更新children时Waterfall还没创建，进而headerView没有创建成功，所以这里需要重建
+    if (!headerView_->GetLocalRootArkUINode()) {
+      headerView_->CreateArkUINode(true, 0);
+      headerView_->SetPosition({0, - headerView_->GetHeight()});
+    }
+    refreshNode_->SetRefreshContent(headerView_->GetLocalRootArkUINode()->GetArkUINodeHandle());
+    auto refreshOffset = headerView_->GetHeight();
+    refreshNode_->SetRefreshOffset(refreshOffset);
+  } else {
+    refreshNode_->SetRefreshPullDownRatio(0);
+  }
   if (!adapter_) {
     adapter_ = std::make_shared<WaterfallItemAdapter>(children_, hasPullHeader_ ? 1 : 0);
     flowNode_->SetLazyAdapter(adapter_->GetHandle());
