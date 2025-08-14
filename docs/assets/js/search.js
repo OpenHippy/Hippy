@@ -314,11 +314,11 @@
         }
       }
       var isExistHome = paths.indexOf(namespaceSuffix + '/') === -1;
-      var isExistReadme = paths.indexOf(namespaceSuffix + '/README') === -1;
+      var isExistReadme = paths.indexOf(namespaceSuffix + '/HOME') === -1;
       if (isExistHome && isExistReadme) {
         paths.unshift(namespaceSuffix + '/');
       }
-    } else if (paths.indexOf('/') === -1 && paths.indexOf('/README') === -1) {
+    } else if (paths.indexOf('/') === -1 && paths.indexOf('/HOME') === -1) {
       paths.unshift('/');
     }
 

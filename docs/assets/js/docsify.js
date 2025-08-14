@@ -403,7 +403,7 @@
     return new RegExp(("\\.(" + (ext.replace(/^\./, '')) + "|html)$"), 'g').test(path)
       ? path
       : /\/$/g.test(path)
-        ? (path + "README" + ext)
+        ? (path + "HOME" + ext)
         : ("" + path + ext);
   }
 
@@ -425,7 +425,7 @@
 
     path = config.alias ? getAlias(path, config.alias) : path;
     path = getFileName(path, ext);
-    path = path === ("/README" + ext) ? config.homepage || path : path;
+    path = path === ("/HOME" + ext) ? config.homepage || path : path;
     path = isAbsolutePath(path) ? path : getPath(base, path);
 
     if (isRelative) {
@@ -2552,7 +2552,7 @@
         subMaxLevel: 0,
         loadSidebar: null,
         loadNavbar: null,
-        homepage: 'README.md',
+        homepage: 'HOME.md',
         coverpage: '',
         basePath: '',
         auto2top: false,
@@ -7694,7 +7694,7 @@
         !config.ignore
       ) {
         if (href === compilerClass.config.homepage) {
-          href = 'README';
+          href = 'HOME';
         }
 
         href = router.toURL(href, null, router.getCurrentPath());
